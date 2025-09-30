@@ -1,11 +1,18 @@
 import { EventEmitter } from 'node:events';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Worker } from 'node:worker_threads';
 
 import type { ExtensionContext, OutputChannel } from 'vscode';
 import * as vscode from 'vscode';
 
-import type { IngestionJobConfig, WorkerEventMessage, WorkerControlMessage, QueryResultPayload } from '@docpilot/shared';
+import type {
+  IngestionJobConfig,
+  WorkerEventMessage,
+  WorkerControlMessage,
+  QueryResultPayload,
+  QueryStatusUpdatePayload
+} from '@docpilot/shared';
 
 export type WorkerManagerEvents = {
   message: (event: WorkerEventMessage) => void;
@@ -48,12 +55,26 @@ export class WorkerManager extends EventEmitter implements vscode.Disposable {
       return;
     }
 
-  const workerEntry = path.join(this.context.extensionPath, '..', 'worker', 'dist', 'index.js');
+    const packagedWorkerEntry = path.join(this.context.extensionPath, 'runtime', 'worker', 'index.js');
+    const devWorkerEntry = path.join(this.context.extensionPath, '..', 'worker', 'dist', 'index.js');
+    const runtimeNodeModules = path.join(this.context.extensionPath, 'runtime', 'node_modules');
 
-    this.output.appendLine(`[docpilot] starting worker: ${workerEntry}`);
+    const isPackaged = fs.existsSync(packagedWorkerEntry);
+    const workerEntry = isPackaged && fs.existsSync(packagedWorkerEntry) ? packagedWorkerEntry : devWorkerEntry;
+
+    const additionalNodePaths: string[] = [];
+    if (isPackaged && fs.existsSync(runtimeNodeModules)) {
+      additionalNodePaths.push(runtimeNodeModules);
+    }
+
+    this.output.appendLine(`[docpilot] starting worker: ${workerEntry} (packaged=${isPackaged})`);
 
     this.worker = new Worker(workerEntry, {
-      execArgv: process.env.DOCPILOT_ENABLE_SOURCE_MAPS ? ['--enable-source-maps'] : []
+      execArgv: process.env.DOCPILOT_ENABLE_SOURCE_MAPS ? ['--enable-source-maps'] : [],
+      workerData: {
+        additionalNodePaths,
+        isPackaged
+      }
     });
 
     this.worker.on('message', (event: WorkerEventMessage) => {
@@ -114,16 +135,18 @@ export class WorkerManager extends EventEmitter implements vscode.Disposable {
       const message: WorkerControlMessage = {
         type: 'query',
         payload: { query, jobId, limit }
-      } as any;
+      };
       this.worker!.postMessage(message);
     });
-  }  public async cancel(jobId: string): Promise<void> {
+  }
+
+  public async cancel(jobId: string): Promise<void> {
     if (!this.worker) {
       return;
     }
 
-  const message: WorkerControlMessage = { type: 'cancel', payload: { jobId } };
-  this.worker.postMessage(message);
+    const message: WorkerControlMessage = { type: 'cancel', payload: { jobId } };
+    this.worker.postMessage(message);
   }
 
   public dispose(): void {
@@ -160,10 +183,41 @@ export class WorkerManager extends EventEmitter implements vscode.Disposable {
       return;
     }
 
+    if (event.type === 'query-status') {
+      this.logQueryStatus(event.payload);
+      return;
+    }
+
     if (event.type === 'query-result') {
       this.output.appendLine(
-        `[worker] 🔍 query returned ${event.payload.chunks.length} results in ${event.payload.queryTime}ms`
+        `[worker] 🔍 query ${event.payload.queryId} returned ${event.payload.chunks.length} results in ${event.payload.queryTime}ms`
       );
+    }
+  }
+
+  private logQueryStatus(update: QueryStatusUpdatePayload): void {
+    const prefix = `[worker] 🔄 query ${update.queryId} (${update.jobId ?? 'all'})`;
+    switch (update.status) {
+      case 'started':
+        this.output.appendLine(`${prefix} started for "${update.query}"`);
+        break;
+      case 'retrieving':
+        this.output.appendLine(
+          `${prefix} retrieving${update.retrievedCandidates !== undefined ? ` candidates=${update.retrievedCandidates}` : ''}`
+        );
+        break;
+      case 'scoring':
+        this.output.appendLine(`${prefix} scoring considered=${update.consideredChunks}`);
+        break;
+      case 'completed':
+        this.output.appendLine(`${prefix} completed results=${update.totalResults} duration=${update.durationMs}ms`);
+        break;
+      case 'cancelled':
+        this.output.appendLine(`${prefix} cancelled`);
+        break;
+      case 'failed':
+        this.output.appendLine(`${prefix} failed: ${update.error}`);
+        break;
     }
   }
 

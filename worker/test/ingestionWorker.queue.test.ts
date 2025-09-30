@@ -52,6 +52,17 @@ function setupWorker(configOverride: Partial<IngestionJobConfig> = {}) {
   const port = new FakePort();
   const worker = new IngestionWorker(port as unknown as MessagePort);
 
+  const retrievalStub = {
+    initialize: vi.fn().mockResolvedValue(undefined),
+    dispose: vi.fn(),
+    indexChunks: vi.fn().mockResolvedValue(undefined),
+    retrieve: vi.fn(),
+    deleteJob: vi.fn(),
+    getStats: vi.fn()
+  };
+
+  (worker as unknown as { retrievalEngine: typeof retrievalStub }).retrievalEngine = retrievalStub;
+
   const baseConfig: IngestionJobConfig = {
     jobId: 'test-job',
     seedUrls: [],

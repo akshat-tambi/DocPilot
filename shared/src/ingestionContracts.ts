@@ -73,7 +73,48 @@ export interface QueryPayload {
   limit?: number;
 }
 
+export type QueryStatus =
+  | 'started'
+  | 'retrieving'
+  | 'scoring'
+  | 'completed'
+  | 'cancelled'
+  | 'failed';
+
+interface BaseQueryStatusPayload {
+  queryId: string;
+  jobId?: string;
+  timestamp: number;
+}
+
+export type QueryStatusUpdatePayload =
+  | (BaseQueryStatusPayload & {
+      status: 'started';
+      query: string;
+    })
+  | (BaseQueryStatusPayload & {
+      status: 'retrieving';
+      retrievedCandidates?: number;
+    })
+  | (BaseQueryStatusPayload & {
+      status: 'scoring';
+      consideredChunks: number;
+    })
+  | (BaseQueryStatusPayload & {
+      status: 'completed';
+      totalResults: number;
+      durationMs: number;
+    })
+  | (BaseQueryStatusPayload & {
+      status: 'cancelled';
+    })
+  | (BaseQueryStatusPayload & {
+      status: 'failed';
+      error: string;
+    });
+
 export interface QueryResultPayload {
+  queryId: string;
   chunks: Array<{
     chunkId: string;
     url: string;
@@ -94,6 +135,7 @@ export type WorkerEventMessage =
   | { type: 'page-progress'; payload: PageProgressPayload }
   | { type: 'page-result'; payload: PageResultPayload }
   | { type: 'job-status'; payload: JobStatusPayload }
+  | { type: 'query-status'; payload: QueryStatusUpdatePayload }
   | { type: 'query-result'; payload: QueryResultPayload }
   | { type: 'worker-error'; payload: WorkerErrorPayload };
 

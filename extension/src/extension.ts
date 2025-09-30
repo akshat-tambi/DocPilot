@@ -8,6 +8,7 @@ import { CopilotBridge } from './copilotBridge';
 let workerManager: WorkerManager | null = null;
 let copilotBridge: CopilotBridge | null = null;
 let activeJobId: string | null = null;
+let activeQueryStatus: vscode.Disposable | null = null;
 
 export function activate(context: vscode.ExtensionContext): void {
   workerManager = new WorkerManager(context);
@@ -188,9 +189,53 @@ export function deactivate(): void {
   workerManager = null;
   copilotBridge = null;
   activeJobId = null;
+  if (activeQueryStatus) {
+    activeQueryStatus.dispose();
+    activeQueryStatus = null;
+  }
 }
 
 function handleWorkerMessage(event: WorkerEventMessage): void {
+  if (event.type === 'query-status') {
+    if (activeQueryStatus) {
+      activeQueryStatus.dispose();
+      activeQueryStatus = null;
+    }
+
+    const status = event.payload.status;
+    const jobScope = event.payload.jobId ? `job ${event.payload.jobId}` : 'all jobs';
+    let message: string;
+
+    switch (status) {
+      case 'started':
+        message = `DocPilot: query started for ${jobScope}`;
+        break;
+      case 'retrieving':
+        message = `DocPilot: retrieving candidates (${event.payload.retrievedCandidates ?? 0} found)`;
+        break;
+      case 'scoring':
+        message = `DocPilot: scoring ${event.payload.consideredChunks} chunks`;
+        break;
+      case 'completed':
+        message = `DocPilot: query completed with ${event.payload.totalResults} results in ${event.payload.durationMs}ms`;
+        break;
+      case 'cancelled':
+        message = 'DocPilot: query cancelled';
+        break;
+      case 'failed':
+        message = `DocPilot: query failed (${event.payload.error})`;
+        break;
+    }
+
+    if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+      vscode.window.setStatusBarMessage(message, 5000);
+    } else {
+      activeQueryStatus = vscode.window.setStatusBarMessage(message);
+    }
+
+    return;
+  }
+
   if (event.type === 'job-status') {
     if (event.payload.status === 'completed') {
       vscode.window.showInformationMessage(
@@ -213,16 +258,28 @@ function handleWorkerMessage(event: WorkerEventMessage): void {
 
   if (event.type === 'worker-error') {
     vscode.window.showErrorMessage(`DocPilot worker error: ${event.payload.message}`);
+    if (activeQueryStatus) {
+      activeQueryStatus.dispose();
+      activeQueryStatus = null;
+    }
   }
 }
 
 function handleWorkerError(error: Error): void {
   vscode.window.showErrorMessage(`DocPilot worker failed: ${error.message}`);
   activeJobId = null;
+  if (activeQueryStatus) {
+    activeQueryStatus.dispose();
+    activeQueryStatus = null;
+  }
 }
 
 function handleWorkerExit(code: number | null): void {
   const status = code === 0 ? 'stopped' : `exited with code ${code}`;
   vscode.window.showWarningMessage(`DocPilot worker ${status}.`);
   activeJobId = null;
+  if (activeQueryStatus) {
+    activeQueryStatus.dispose();
+    activeQueryStatus = null;
+  }
 }

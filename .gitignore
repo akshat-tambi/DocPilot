@@ -5,6 +5,9 @@ build/
 coverage/
 .vscode-test/
 
+# Packaged runtime artifacts
+extension/runtime/
+
 # VS Code extension packaging
 *.vsix
 

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { URL } from 'node:url';
 import { parentPort, MessagePort } from 'node:worker_threads';
 
@@ -11,6 +12,9 @@ import {
   type JobStatusPayload,
   type PageProgressPayload,
   type PageResultPayload,
+  type QueryPayload,
+  type QueryResultPayload,
+  type QueryStatusUpdatePayload,
   type WorkerEventMessage,
   isWorkerControlMessage
 } from '@docpilot/shared';
@@ -78,7 +82,25 @@ export class IngestionWorker {
     }
   }
 
-  private async handleQuery(payload: import('@docpilot/shared').QueryPayload): Promise<void> {
+  private emitQueryStatus(payload: QueryStatusUpdatePayload): void {
+    this.port.postMessage({
+      type: 'query-status',
+      payload
+    });
+  }
+
+  private async handleQuery(payload: QueryPayload): Promise<void> {
+    const queryId = randomUUID();
+    const startedAt = Date.now();
+
+    this.emitQueryStatus({
+      status: 'started',
+      queryId,
+      jobId: payload.jobId,
+      query: payload.query,
+      timestamp: startedAt
+    });
+
     try {
       const result = await this.retrievalEngine.retrieve({
         text: payload.query,
@@ -86,7 +108,24 @@ export class IngestionWorker {
         jobIds: payload.jobId ? [payload.jobId] : undefined
       });
 
-      const queryResult: import('@docpilot/shared').QueryResultPayload = {
+      this.emitQueryStatus({
+        status: 'retrieving',
+        queryId,
+        jobId: payload.jobId,
+        retrievedCandidates: result.totalFound,
+        timestamp: Date.now()
+      });
+
+      this.emitQueryStatus({
+        status: 'scoring',
+        queryId,
+        jobId: payload.jobId,
+        consideredChunks: result.chunks.length,
+        timestamp: Date.now()
+      });
+
+      const queryResult: QueryResultPayload = {
+        queryId,
         chunks: result.chunks.map(item => ({
           chunkId: item.chunk.id,
           url: item.url,
@@ -102,7 +141,23 @@ export class IngestionWorker {
         type: 'query-result',
         payload: queryResult
       });
+
+      this.emitQueryStatus({
+        status: 'completed',
+        queryId,
+        jobId: payload.jobId,
+        totalResults: queryResult.chunks.length,
+        durationMs: Date.now() - startedAt,
+        timestamp: Date.now()
+      });
     } catch (error) {
+      this.emitQueryStatus({
+        status: 'failed',
+        queryId,
+        jobId: payload.jobId,
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: Date.now()
+      });
       this.port.postMessage({
         type: 'worker-error',
         payload: {
@@ -526,9 +581,4 @@ export class IngestionWorker {
   private postMessage(message: WorkerEventMessage): void {
     this.port.postMessage(message);
   }
-}
-
-if (parentPort) {
-  const worker = new IngestionWorker(parentPort);
-  worker.bind();
 }

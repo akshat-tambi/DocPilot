@@ -1,8 +1,42 @@
-import { parentPort } from 'node:worker_threads';
+import * as path from 'node:path';
+import { parentPort, workerData } from 'node:worker_threads';
 
 import { IngestionWorker } from './ingestionWorker';
 
+type WorkerBootstrapData = {
+  additionalNodePaths?: string[];
+  isPackaged?: boolean;
+};
+
+function registerAdditionalModulePaths(): void {
+  const data = (workerData ?? {}) as WorkerBootstrapData;
+  const additionalPaths = data.additionalNodePaths ?? [];
+  if (additionalPaths.length === 0) {
+    return;
+  }
+
+  const Module = require('module') as {
+    globalPaths: string[];
+    _initPaths: () => void;
+  };
+
+  const resolved = additionalPaths.map((entry) => path.resolve(entry));
+  const existingNodePath = process.env.NODE_PATH ? process.env.NODE_PATH.split(path.delimiter) : [];
+  const combined = [...new Set([...resolved, ...existingNodePath])];
+  process.env.NODE_PATH = combined.join(path.delimiter);
+
+  for (const entry of resolved.reverse()) {
+    if (!Module.globalPaths.includes(entry)) {
+      Module.globalPaths.unshift(entry);
+    }
+  }
+
+  Module._initPaths();
+}
+
 async function bootstrap(): Promise<void> {
+  registerAdditionalModulePaths();
+
   const port = parentPort;
   if (!port) {
     console.error('DocPilot worker started without a parent port; exiting');
