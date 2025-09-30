@@ -3,7 +3,9 @@
   "include": [
     "extension/src/**/*.ts",
     "shared/src/**/*.ts",
+    "shared/src/**/*.d.ts",
     "worker/src/**/*.ts",
+    "worker/src/**/*.d.ts",
     "shared/vitest.config.ts"
   ]
 }

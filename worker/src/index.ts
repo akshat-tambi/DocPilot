@@ -1,3 +1,29 @@
-export function runWorkerBootstrap(): void {
-  console.log('docpilot worker ready (placeholder)');
+import { parentPort } from 'node:worker_threads';
+
+import { IngestionWorker } from './ingestionWorker';
+
+function bootstrap(): void {
+  const port = parentPort;
+  if (!port) {
+    console.error('DocPilot worker started without a parent port; exiting');
+    process.exit(1);
+  }
+
+  const worker = new IngestionWorker(port);
+  worker.bind();
+
+  process.on('uncaughtException', (error) => {
+    console.error('Uncaught exception in ingestion worker', error);
+    port.postMessage({ type: 'worker-error', payload: { message: error.message } });
+  });
+
+  process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled rejection in ingestion worker', reason);
+    port.postMessage({
+      type: 'worker-error',
+      payload: { message: reason instanceof Error ? reason.message : String(reason) }
+    });
+  });
 }
+
+bootstrap();

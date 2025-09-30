@@ -13,6 +13,7 @@ module.exports = {
   },
   plugins: ['@typescript-eslint', 'import'],
   extends: ['eslint:recommended', 'plugin:@typescript-eslint/recommended', 'plugin:import/recommended', 'prettier'],
+  ignorePatterns: ['**/*.d.ts'],
   settings: {
     'import/resolver': {
       typescript: {
