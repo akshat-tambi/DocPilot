@@ -7,7 +7,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint \"src/**/*.ts\"",
-    "test": "echo \"no worker tests yet\""
+    "test": "pnpm test:unit",
+    "test:unit": "vitest --run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts"
   },
   "dependencies": {
     "@docpilot/shared": "workspace:*",
@@ -19,6 +21,7 @@
     "unified": "^10.1.2"
   },
   "devDependencies": {
-    "@types/cheerio": "^0.22.35"
+    "@types/cheerio": "^0.22.35",
+    "vite-tsconfig-paths": "^4.3.1"
   }
 }
