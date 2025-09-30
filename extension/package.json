@@ -13,6 +13,14 @@
   "contributes": {
     "commands": [
       {
+        "command": "docpilot.openPanel",
+        "title": "DocPilot: Open Panel",
+        "category": "DocPilot",
+        "icon": "$(rocket)"
+      },
+
+
+      {
         "command": "docpilot.ingestUrl",
         "title": "DocPilot: Ingest Documentation URL",
         "category": "DocPilot"
@@ -30,12 +38,57 @@
     ],
     "chatParticipants": [
       {
-        "id": "docpilot.assistant",
+        "id": "docpilot.context",
         "name": "docpilot",
-        "description": "AI assistant with access to your ingested documentation",
-        "isSticky": true
+        "description": "Inject documentation context into regular Copilot chat",
+        "isSticky": false
       }
-    ]
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "docpilot.openPanel",
+          "when": "true"
+        },
+        {
+          "command": "docpilot.copyContextToClipboard",
+          "when": "true"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "docpilot.openPanel",
+          "when": "view == workbench.view.extensions",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "type": "object",
+      "title": "DocPilot",
+      "properties": {
+        "docpilot.sources": {
+          "type": "array",
+          "default": [],
+          "description": "Configured documentation sources",
+          "scope": "window"
+        },
+        "docpilot.contextAugmentation.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic context augmentation for chat conversations",
+          "scope": "window"
+        },
+        "docpilot.contextAugmentation.maxChunks": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Maximum number of documentation chunks to include in context",
+          "scope": "window"
+        }
+      }
+    }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

@@ -4,13 +4,18 @@ import type { IngestionJobConfig, WorkerEventMessage } from '@docpilot/shared';
 
 import { WorkerManager } from './workerManager';
 import { CopilotBridge } from './copilotBridge';
+import { DocPilotPanel } from './docPilotPanel';
+import { ContextAugmenter } from './contextAugmenter';
 
 let workerManager: WorkerManager | null = null;
 let copilotBridge: CopilotBridge | null = null;
+let docPilotPanel: DocPilotPanel | null = null;
+let contextAugmenter: ContextAugmenter | null = null;
 let activeJobId: string | null = null;
 let activeQueryStatus: vscode.Disposable | null = null;
 
 export function activate(context: vscode.ExtensionContext): void {
+  // Initialize worker manager
   workerManager = new WorkerManager(context);
   context.subscriptions.push(workerManager);
 
@@ -18,7 +23,14 @@ export function activate(context: vscode.ExtensionContext): void {
   workerManager.on('error', handleWorkerError);
   workerManager.on('exit', handleWorkerExit);
 
-  // Initialize Copilot bridge
+  // Initialize context augmenter (new UI-based approach)
+  contextAugmenter = new ContextAugmenter(
+    workerManager,
+    vscode.window.createOutputChannel('DocPilot Context')
+  );
+  contextAugmenter.register(context);
+
+  // Keep the original Copilot bridge for backward compatibility
   copilotBridge = new CopilotBridge(
     async (query: string) => {
       if (!workerManager) {
@@ -44,6 +56,19 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   copilotBridge.register(context);
+
+  // Register command to open DocPilot panel
+  const openPanelCommand = vscode.commands.registerCommand('docpilot.openPanel', () => {
+    if (!workerManager) {
+      vscode.window.showErrorMessage('DocPilot worker is not available.');
+      return;
+    }
+
+    docPilotPanel = DocPilotPanel.createOrShow(context.extensionUri, workerManager, context);
+    if (contextAugmenter) {
+      contextAugmenter.setPanel(docPilotPanel);
+    }
+  });
 
   const startCommand = vscode.commands.registerCommand('docpilot.ingestUrl', async () => {
     if (!workerManager) {
@@ -181,14 +206,19 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   });
 
-  context.subscriptions.push(startCommand, cancelCommand, queryCommand);
+  context.subscriptions.push(openPanelCommand, startCommand, cancelCommand, queryCommand);
 }
 
 export function deactivate(): void {
   workerManager?.dispose();
+  docPilotPanel?.dispose();
+  
   workerManager = null;
   copilotBridge = null;
+  docPilotPanel = null;
+  contextAugmenter = null;
   activeJobId = null;
+  
   if (activeQueryStatus) {
     activeQueryStatus.dispose();
     activeQueryStatus = null;
