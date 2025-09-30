@@ -1,0 +1,15 @@
+{
+  "name": "@docpilot/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "echo \"no shared tests yet\""
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

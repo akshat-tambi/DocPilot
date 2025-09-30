@@ -1,0 +1,22 @@
+{
+  "name": "docpilot",
+  "displayName": "DocPilot",
+  "description": "documentation-aware copilot companion",
+  "version": "0.0.0",
+  "private": true,
+  "publisher": "akshat",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {},
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "echo \"no extension tests yet\""
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

@@ -1,0 +1,25 @@
+# Node/TypeScript
+node_modules/
+dist/
+build/
+coverage/
+.vscode-test/
+
+# VS Code extension packaging
+*.vsix
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env*
+
+# Models & caches
+assets/models/
+assets/cache/
+
+# Misc
+.DS_Store

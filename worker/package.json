@@ -1,0 +1,14 @@
+{
+  "name": "docpilot-worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "echo \"no worker tests yet\""
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
