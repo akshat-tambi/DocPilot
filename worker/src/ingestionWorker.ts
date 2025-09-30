@@ -246,9 +246,18 @@ export class IngestionWorker {
         status: 'parsed'
       });
 
-      this.jobState.processedPages += 1;
+      const currentState = this.jobState;
+      if (!currentState) {
+        return;
+      }
 
-      if (this.jobState.processedPages >= config.maxPages) {
+      currentState.processedPages += 1;
+
+      if (currentState.cancelled) {
+        return;
+      }
+
+      if (currentState.processedPages >= config.maxPages) {
         this.cancelCurrentJob('page-limit-reached', config.jobId);
         return;
       }
@@ -265,7 +274,9 @@ export class IngestionWorker {
         status: 'failed',
         reason
       });
-      this.jobState.processedPages += 1;
+      if (this.jobState) {
+        this.jobState.processedPages += 1;
+      }
     }
   }
 
