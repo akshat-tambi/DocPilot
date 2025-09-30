@@ -222,23 +222,30 @@ export class DocPilotPanel {
             delete source.jobId;
             this.saveState().then(() => this.sendState());
             this.workerManager.off('message', messageHandler);
+          } else if (event.payload.status === 'cancelled') {
+            // Handle truly cancelled jobs (user cancellation, errors, etc.)
+            source.status = 'error';
+            source.error = event.payload.error || 'Scraping cancelled';
+            delete source.jobId;
+            this.saveState().then(() => this.sendState());
+            this.workerManager.off('message', messageHandler);
           } else if (event.payload.status === 'running') {
-            // Update temporary stats during scraping
-            source.stats = {
-              pagesScraped: event.payload.processedPages || 0,
-              chunksCreated: totalChunks
-            };
+            // Update temporary stats during scraping - make sure to initialize if not present
+            if (!source.stats) {
+              source.stats = { pagesScraped: 0, chunksCreated: 0 };
+            }
+            source.stats.pagesScraped = event.payload.processedPages || 0;
+            source.stats.chunksCreated = totalChunks;
             this.sendState();
           }
         } else if (event.type === 'page-result' && event.payload?.jobId === jobId) {
           // Accumulate chunks from completed pages
           totalChunks += event.payload.chunks?.length || 0;
-          // Update temporary stats
-          source.stats = {
-            pagesScraped: source.stats?.pagesScraped || 0,
-            chunksCreated: totalChunks
-          };
-          this.sendState();
+          // Update chunks count only (pages count comes from job-status)
+          if (source.stats) {
+            source.stats.chunksCreated = totalChunks;
+            this.sendState();
+          }
         } else if (event.type === 'page-progress' && event.payload?.jobId === jobId) {
           // Update progress during scraping
           this.sendState();

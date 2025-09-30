@@ -209,11 +209,19 @@ Please open a workspace folder first.`);
         return { metadata: { command: 'docpilot.context', error: 'No workspace' } };
       }
 
+      // Create .docpilot folder if it doesn't exist
+      const docpilotFolderUri = vscode.Uri.joinPath(workspaceFolder.uri, '.docpilot');
+      try {
+        await vscode.workspace.fs.stat(docpilotFolderUri);
+      } catch {
+        await vscode.workspace.fs.createDirectory(docpilotFolderUri);
+      }
+
       // Create filename with timestamp and sanitized query
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       const sanitizedQuery = request.prompt.replace(/[^a-zA-Z0-9-_]/g, '-').slice(0, 50);
       const filename = `docpilot-context-${sanitizedQuery}-${timestamp}.md`;
-      const filePath = vscode.Uri.joinPath(workspaceFolder.uri, filename);
+      const filePath = vscode.Uri.joinPath(docpilotFolderUri, filename);
 
       try {
         await vscode.workspace.fs.writeFile(filePath, Buffer.from(contextText, 'utf8'));

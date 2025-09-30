@@ -196,18 +196,8 @@ export class IngestionWorker {
       hostAllowList
     };
 
-    queue.onIdle().then(() => {
-      if (!this.jobState || this.jobState.cancelled) {
-        return;
-      }
-
-      this.emitJobStatus('completed', {
-        jobId: config.jobId,
-        processedPages: this.jobState.processedPages,
-        discoveredPages: this.jobState.discoveredPages
-      });
-      this.jobState = null;
-    });
+    // Don't rely on queue.onIdle() - check completion after each page
+    // The completion check will be done in processUrl when all pages are done
 
     this.emitJobStatus('running', {
       jobId: config.jobId,
@@ -248,6 +238,7 @@ export class IngestionWorker {
 
     const normalized = this.normalizeUrl(candidate.href);
     if (!normalized) {
+      console.log(`[DocPilot] Skipping invalid URL: ${candidate.href}`);
       return;
     }
 
@@ -255,23 +246,28 @@ export class IngestionWorker {
     const { config, visited } = jobState;
 
     if (visited.has(normalized)) {
+      console.log(`[DocPilot] Skipping already visited: ${normalized}`);
       return;
     }
 
     const depth = candidate.depth;
     if (depth > config.maxDepth) {
+      console.log(`[DocPilot] Skipping depth ${depth} > maxDepth ${config.maxDepth}: ${normalized}`);
       return;
     }
 
     if (jobState.processedPages >= config.maxPages) {
+      console.log(`[DocPilot] Skipping, reached maxPages ${config.maxPages}: ${normalized}`);
       return;
     }
 
     const host = this.safeHostname(normalized);
     if (!host || !this.isDomainAllowed(host, jobState)) {
+      console.log(`[DocPilot] Skipping disallowed domain ${host} (followExternal: ${config.followExternal}): ${normalized}`);
       return;
     }
 
+    console.log(`[DocPilot] Enqueuing depth ${depth} (${jobState.discoveredPages + 1}/${config.maxPages}): ${normalized}`);
     visited.add(normalized);
     jobState.discoveredPages += 1;
 
@@ -389,18 +385,44 @@ export class IngestionWorker {
 
       currentState.processedPages += 1;
 
+      // Emit updated job status
+      this.emitJobStatus('running', {
+        jobId: config.jobId,
+        processedPages: currentState.processedPages,
+        discoveredPages: currentState.discoveredPages
+      });
+
       if (currentState.cancelled) {
         return;
       }
 
       if (currentState.processedPages >= config.maxPages) {
-        this.cancelCurrentJob('page-limit-reached', config.jobId);
+        console.log(`[DocPilot] Reached page limit (${config.maxPages}), completing job`);
+        
+        // Complete successfully when page limit is reached
+        this.emitJobStatus('completed', {
+          jobId: config.jobId,
+          processedPages: currentState.processedPages,
+          discoveredPages: currentState.discoveredPages
+        });
+        
+        // Clean up
+        currentState.cancelled = true;
+        currentState.queue.clear();
+        this.jobState = null;
         return;
       }
 
+      console.log(`[DocPilot] Found ${result.links.length} links on ${url} at depth ${depth}`);
+      if (result.links.length > 0 && depth < config.maxDepth) {
+        console.log(`[DocPilot] Processing links for depth ${depth + 1} (maxDepth: ${config.maxDepth})`);
+      }
       result.links.forEach((href) => {
         this.enqueueLink({ href, depth: depth + 1 });
       });
+
+      // Check if job should complete (no more work to do)
+      this.checkJobCompletion();
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'unknown-error';
       this.emitPageProgress({
@@ -412,6 +434,16 @@ export class IngestionWorker {
       });
       if (this.jobState) {
         this.jobState.processedPages += 1;
+        
+        // Emit updated job status
+        this.emitJobStatus('running', {
+          jobId: config.jobId,
+          processedPages: this.jobState.processedPages,
+          discoveredPages: this.jobState.discoveredPages
+        });
+        
+        // Check if job should complete
+        this.checkJobCompletion();
       }
     }
   }
@@ -580,5 +612,32 @@ export class IngestionWorker {
 
   private postMessage(message: WorkerEventMessage): void {
     this.port.postMessage(message);
+  }
+
+  private checkJobCompletion(): void {
+    if (!this.jobState || this.jobState.cancelled) {
+      return;
+    }
+
+    // Use a small delay to ensure queue is truly idle and no more tasks are being added
+    setTimeout(() => {
+      if (!this.jobState || this.jobState.cancelled) {
+        return;
+      }
+
+      const { queue, config } = this.jobState;
+      
+      // Job is complete when queue is idle AND no more pages will be processed
+      if (queue.size === 0 && queue.pending === 0) {
+        console.log(`[DocPilot] Job completing - processed: ${this.jobState.processedPages}, discovered: ${this.jobState.discoveredPages}`);
+        
+        this.emitJobStatus('completed', {
+          jobId: config.jobId,
+          processedPages: this.jobState.processedPages,
+          discoveredPages: this.jobState.discoveredPages
+        });
+        this.jobState = null;
+      }
+    }, 100); // Small delay to let any remaining enqueuing finish
   }
 }
