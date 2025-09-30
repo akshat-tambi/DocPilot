@@ -5,7 +5,7 @@ import { Worker } from 'node:worker_threads';
 import type { ExtensionContext, OutputChannel } from 'vscode';
 import * as vscode from 'vscode';
 
-import type { IngestionJobConfig, WorkerEventMessage, WorkerControlMessage } from '@docpilot/shared';
+import type { IngestionJobConfig, WorkerEventMessage, WorkerControlMessage, QueryResultPayload } from '@docpilot/shared';
 
 export type WorkerManagerEvents = {
   message: (event: WorkerEventMessage) => void;
@@ -81,11 +81,43 @@ export class WorkerManager extends EventEmitter implements vscode.Disposable {
       throw new Error('Worker failed to start');
     }
 
-  const message: WorkerControlMessage = { type: 'start', payload: config };
-  this.worker.postMessage(message);
+    const message: WorkerControlMessage = { type: 'start', payload: config };
+    this.worker.postMessage(message);
   }
 
-  public async cancel(jobId: string): Promise<void> {
+  public async query(query: string, jobId?: string, limit?: number): Promise<QueryResultPayload> {
+    await this.ensureWorker();
+
+    if (!this.worker) {
+      throw new Error('Worker failed to start');
+    }
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Query timeout'));
+      }, 30000);
+
+      const handleMessage = (event: WorkerEventMessage) => {
+        if (event.type === 'query-result') {
+          clearTimeout(timeout);
+          this.off('message', handleMessage);
+          resolve(event.payload);
+        } else if (event.type === 'worker-error') {
+          clearTimeout(timeout);
+          this.off('message', handleMessage);
+          reject(new Error(event.payload.message));
+        }
+      };
+
+      this.on('message', handleMessage);
+
+      const message: WorkerControlMessage = {
+        type: 'query',
+        payload: { query, jobId, limit }
+      } as any;
+      this.worker!.postMessage(message);
+    });
+  }  public async cancel(jobId: string): Promise<void> {
     if (!this.worker) {
       return;
     }

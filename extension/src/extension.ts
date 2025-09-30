@@ -3,8 +3,10 @@ import * as vscode from 'vscode';
 import type { IngestionJobConfig, WorkerEventMessage } from '@docpilot/shared';
 
 import { WorkerManager } from './workerManager';
+import { CopilotBridge } from './copilotBridge';
 
 let workerManager: WorkerManager | null = null;
+let copilotBridge: CopilotBridge | null = null;
 let activeJobId: string | null = null;
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -14,6 +16,33 @@ export function activate(context: vscode.ExtensionContext): void {
   workerManager.on('message', handleWorkerMessage);
   workerManager.on('error', handleWorkerError);
   workerManager.on('exit', handleWorkerExit);
+
+  // Initialize Copilot bridge
+  copilotBridge = new CopilotBridge(
+    async (query: string) => {
+      if (!workerManager) {
+        throw new Error('Worker manager not available');
+      }
+      
+      const result = await workerManager.query(query);
+      return {
+        chunks: result.chunks.map(chunk => ({
+          chunk: {
+            text: chunk.text,
+            wordCount: chunk.text.split(' ').length
+          },
+          score: chunk.score,
+          url: chunk.url,
+          headings: chunk.headings
+        })),
+        totalFound: result.totalFound,
+        queryTime: result.queryTime
+      };
+    },
+    vscode.window.createOutputChannel('DocPilot Copilot')
+  );
+
+  copilotBridge.register(context);
 
   const startCommand = vscode.commands.registerCommand('docpilot.ingestUrl', async () => {
     if (!workerManager) {
@@ -81,6 +110,7 @@ export function activate(context: vscode.ExtensionContext): void {
 export function deactivate(): void {
   workerManager?.dispose();
   workerManager = null;
+  copilotBridge = null;
   activeJobId = null;
 }
 

@@ -19,6 +19,8 @@ import PQueue from 'p-queue';
 import { fetch } from 'undici';
 import type { Response } from 'undici';
 
+import { RetrievalEngine } from './retrievalEngine';
+
 type LinkCandidate = {
   href: string;
   depth: number;
@@ -46,13 +48,19 @@ const MARKDOWN_EXTENSIONS = ['.md', '.markdown'];
 
 export class IngestionWorker {
   private jobState: JobState | null = null;
+  private retrievalEngine: RetrievalEngine;
 
-  constructor(private readonly port: MessagePort) {}
+  constructor(private readonly port: MessagePort) {
+    this.retrievalEngine = new RetrievalEngine();
+  }
 
-  public bind(): void {
+  public async bind(): Promise<void> {
+    await this.retrievalEngine.initialize();
+    
     this.port.on('message', (message) => this.onMessage(message));
     this.port.on('close', () => {
       this.cancelCurrentJob('worker-port-closed');
+      this.retrievalEngine.dispose();
     });
   }
 
@@ -65,6 +73,42 @@ export class IngestionWorker {
       this.startJob(message.payload);
     } else if (message.type === 'cancel') {
       this.cancelCurrentJob('cancelled-by-extension', message.payload.jobId);
+    } else if (message.type === 'query') {
+      this.handleQuery(message.payload);
+    }
+  }
+
+  private async handleQuery(payload: import('@docpilot/shared').QueryPayload): Promise<void> {
+    try {
+      const result = await this.retrievalEngine.retrieve({
+        text: payload.query,
+        limit: payload.limit || 10,
+        jobIds: payload.jobId ? [payload.jobId] : undefined
+      });
+
+      const queryResult: import('@docpilot/shared').QueryResultPayload = {
+        chunks: result.chunks.map(item => ({
+          chunkId: item.chunk.id,
+          url: item.url,
+          headings: item.headings,
+          text: item.chunk.text,
+          score: item.score
+        })),
+        totalFound: result.totalFound,
+        queryTime: result.queryTime
+      };
+
+      this.port.postMessage({
+        type: 'query-result',
+        payload: queryResult
+      });
+    } catch (error) {
+      this.port.postMessage({
+        type: 'worker-error',
+        payload: {
+          message: `Query failed: ${error instanceof Error ? error.message : String(error)}`
+        }
+      });
     }
   }
 
@@ -227,6 +271,28 @@ export class IngestionWorker {
 
       const chunks = chunkText(result.text, chunkOptions);
       const summary = summarizeChunks(chunks);
+
+      // Index chunks in vector store
+      try {
+        await this.retrievalEngine.indexChunks(config.jobId, url, chunks);
+        
+        this.emitPageProgress({
+          jobId: config.jobId,
+          url,
+          depth,
+          status: 'indexed'
+        });
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : 'embedding-failed';
+        this.emitPageProgress({
+          jobId: config.jobId,
+          url,
+          depth,
+          status: 'failed',
+          reason
+        });
+        return;
+      }
 
       const payload: PageResultPayload = {
         jobId: config.jobId,

@@ -18,14 +18,13 @@ export interface CancelJobPayload {
   jobId: string;
 }
 
-export type WorkerControlMessage =
-  | { type: 'start'; payload: IngestionJobConfig }
-  | { type: 'cancel'; payload: CancelJobPayload };
+// Moved below to include query type
 
 export type PageLifecycleStatus =
   | 'queued'
   | 'fetching'
   | 'parsed'
+  | 'indexed'
   | 'skipped'
   | 'failed';
 
@@ -67,10 +66,34 @@ export interface WorkerErrorPayload {
   message: string;
 }
 
+export interface QueryPayload {
+  jobId?: string;
+  query: string;
+  limit?: number;
+}
+
+export interface QueryResultPayload {
+  chunks: Array<{
+    chunkId: string;
+    url: string;
+    headings: string[];
+    text: string;
+    score: number;
+  }>;
+  totalFound: number;
+  queryTime: number;
+}
+
+export type WorkerControlMessage =
+  | { type: 'start'; payload: IngestionJobConfig }
+  | { type: 'cancel'; payload: CancelJobPayload }
+  | { type: 'query'; payload: QueryPayload };
+
 export type WorkerEventMessage =
   | { type: 'page-progress'; payload: PageProgressPayload }
   | { type: 'page-result'; payload: PageResultPayload }
   | { type: 'job-status'; payload: JobStatusPayload }
+  | { type: 'query-result'; payload: QueryResultPayload }
   | { type: 'worker-error'; payload: WorkerErrorPayload };
 
 export function isWorkerControlMessage(message: unknown): message is WorkerControlMessage {
@@ -83,5 +106,9 @@ export function isWorkerControlMessage(message: unknown): message is WorkerContr
     return true;
   }
 
-  return value.type === 'cancel';
+  if (value.type === 'cancel') {
+    return true;
+  }
+
+  return value.type === 'query';
 }

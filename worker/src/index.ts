@@ -2,7 +2,7 @@ import { parentPort } from 'node:worker_threads';
 
 import { IngestionWorker } from './ingestionWorker';
 
-function bootstrap(): void {
+async function bootstrap(): Promise<void> {
   const port = parentPort;
   if (!port) {
     console.error('DocPilot worker started without a parent port; exiting');
@@ -10,7 +10,7 @@ function bootstrap(): void {
   }
 
   const worker = new IngestionWorker(port);
-  worker.bind();
+  await worker.bind();
 
   process.on('uncaughtException', (error) => {
     console.error('Uncaught exception in ingestion worker', error);
