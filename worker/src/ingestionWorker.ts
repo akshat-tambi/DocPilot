@@ -1,23 +1,23 @@
 import { URL } from 'node:url';
 import { parentPort, MessagePort } from 'node:worker_threads';
 
-import type { ChunkingOptions } from '@docpilot/shared';
-import { chunkText, summarizeChunks } from '@docpilot/shared';
-import { load as loadHtml } from 'cheerio';
-import PQueue from 'p-queue';
-import { fetch } from 'undici';
-import type { Response } from 'undici';
-
 import {
+  chunkText,
+  summarizeChunks,
+  type ChunkingOptions,
   type ChunkSummary,
   type IngestionJobConfig,
-  type JobStatusPayload,
   type JobStatus,
+  type JobStatusPayload,
   type PageProgressPayload,
   type PageResultPayload,
   type WorkerEventMessage,
   isWorkerControlMessage
-} from './contracts';
+} from '@docpilot/shared';
+import { load as loadHtml } from 'cheerio';
+import PQueue from 'p-queue';
+import { fetch } from 'undici';
+import type { Response } from 'undici';
 
 type LinkCandidate = {
   href: string;

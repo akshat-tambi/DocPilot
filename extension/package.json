@@ -9,14 +9,28 @@
     "vscode": "^1.90.0"
   },
   "categories": ["Other"],
-  "activationEvents": [],
   "main": "./dist/extension.js",
-  "contributes": {},
+  "contributes": {
+    "commands": [
+      {
+        "command": "docpilot.ingestUrl",
+        "title": "DocPilot: Ingest Documentation URL"
+      },
+      {
+        "command": "docpilot.cancelIngestion",
+        "title": "DocPilot: Cancel Ingestion"
+      }
+    ]
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "echo \"no extension tests yet\""
   },
-  "dependencies": {},
-  "devDependencies": {}
+  "dependencies": {
+    "@docpilot/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0"
+  }
 }

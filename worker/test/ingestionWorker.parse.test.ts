@@ -55,7 +55,7 @@ describe('IngestionWorker parsing helpers', () => {
 
     expect(result.text).toContain('Getting Started');
     expect(result.text).toContain('Welcome to the docs!');
-  expect(result.headings).toEqual(['Ignore me', 'Getting Started']);
+    expect(result.headings).toEqual(['Ignore me', 'Getting Started']);
     expect(result.links).toContain('https://docs.example.com/guide');
     expect(result.links).toContain('https://example.com/external');
   });
@@ -84,7 +84,7 @@ describe('IngestionWorker parsing helpers', () => {
     expect(result.text).toContain('Overview');
     expect(result.text).toContain('Body level details.');
     expect(result.headings).toEqual(['Overview']);
-  expect(result.links).toEqual(['https://docs.example.com/root/section/page.html']);
+    expect(result.links).toEqual(['https://docs.example.com/root/section/page.html']);
   });
 
   it('normalizes markdown content to plain text without links array', async () => {

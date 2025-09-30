@@ -4,7 +4,12 @@ import type { MessagePort } from 'worker_threads';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
 
-import type { IngestionJobConfig, JobStatusPayload, PageResultPayload, WorkerEventMessage } from '../src/contracts';
+import type {
+  IngestionJobConfig,
+  JobStatusPayload,
+  PageResultPayload,
+  WorkerEventMessage
+} from '@docpilot/shared';
 import { IngestionWorker } from '../src/ingestionWorker';
 
 class FakePort extends EventEmitter {

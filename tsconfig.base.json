@@ -11,8 +11,6 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@docpilot/shared": ["shared/src/index.ts"],
-      "@docpilot/shared/*": ["shared/src/*"],
       "@docpilot/worker/*": ["worker/src/*"]
     }
   },

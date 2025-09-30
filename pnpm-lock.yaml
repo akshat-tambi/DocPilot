@@ -39,7 +39,15 @@ importers:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@20.19.18)
 
-  extension: {}
+  extension:
+    dependencies:
+      '@docpilot/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@types/vscode':
+        specifier: ^1.90.0
+        version: 1.104.0
 
   shared:
     dependencies:
@@ -429,6 +437,9 @@ packages:
 
   '@types/unist@2.0.11':
     resolution: {integrity: sha512-CmBKiL6NNo/OqgmMn95Fk9Whlp2mtvIv+KNpQKN2F4SjvrEesubTRWGYSg+BnWZOnlCaSTU1sMpsBOzgbYhnsA==}
+
+  '@types/vscode@1.104.0':
+    resolution: {integrity: sha512-0KwoU2rZ2ecsTGFxo4K1+f+AErRsYW0fsp6A0zufzGuhyczc2IoKqYqcwXidKXmy2u8YB2GsYsOtiI9Izx3Tig==}
 
   '@typescript-eslint/eslint-plugin@7.18.0':
     resolution: {integrity: sha512-94EQTWZ40mzBc42ATNIBimBEDltSJ9RQHCC8vc/PDbxi4k8dVwUAv4o98dk50M1zB+JGFxp43FP7f8+FP8R6Sw==}
@@ -2326,6 +2337,8 @@ snapshots:
       undici-types: 6.21.0
 
   '@types/unist@2.0.11': {}
+
+  '@types/vscode@1.104.0': {}
 
   '@typescript-eslint/eslint-plugin@7.18.0(@typescript-eslint/parser@7.18.0(eslint@8.57.1)(typescript@5.9.2))(eslint@8.57.1)(typescript@5.9.2)':
     dependencies:
