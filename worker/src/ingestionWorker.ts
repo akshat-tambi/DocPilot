@@ -365,8 +365,9 @@ export class IngestionWorker {
     const { unified } = await import('unified');
     const remarkParse = (await import('remark-parse')).default;
     const strip = (await import('strip-markdown')).default;
+    const remarkStringify = (await import('remark-stringify')).default;
 
-    const processor = unified().use(remarkParse as any).use(strip as any);
+    const processor = unified().use(remarkParse as any).use(strip as any).use(remarkStringify as any);
     const file = await processor.process(content);
     const text = String(file).trim();
 
