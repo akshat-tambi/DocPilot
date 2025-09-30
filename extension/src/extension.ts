@@ -104,7 +104,83 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.showInformationMessage(`Cancellation requested for job ${activeJobId}.`);
   });
 
-  context.subscriptions.push(startCommand, cancelCommand);
+  const queryCommand = vscode.commands.registerCommand('docpilot.queryDocs', async () => {
+    if (!workerManager) {
+      vscode.window.showErrorMessage('DocPilot worker is not available.');
+      return;
+    }
+
+    const query = await vscode.window.showInputBox({
+      prompt: 'Enter your documentation query',
+      placeHolder: 'How do I authenticate with the API?',
+      validateInput: (value) => {
+        if (!value.trim()) {
+          return 'Please enter a query.';
+        }
+        return null;
+      }
+    });
+
+    if (!query) {
+      return;
+    }
+
+    try {
+      vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Searching documentation...',
+        cancellable: false
+      }, async () => {
+        const result = await workerManager!.query(query.trim());
+        
+        if (result.chunks.length === 0) {
+          vscode.window.showInformationMessage('No relevant documentation found for your query.');
+          return;
+        }
+
+        const panel = vscode.window.createWebviewPanel(
+          'docpilotResults',
+          'DocPilot Search Results',
+          vscode.ViewColumn.Beside,
+          { enableScripts: false }
+        );
+
+        const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: var(--vscode-font-family); padding: 20px; }
+            .result { margin-bottom: 20px; padding: 15px; border: 1px solid var(--vscode-panel-border); }
+            .score { color: var(--vscode-descriptionForeground); font-size: 0.9em; }
+            .url { color: var(--vscode-textLink-foreground); text-decoration: none; }
+            .text { margin-top: 10px; line-height: 1.6; }
+            .heading { font-weight: bold; margin-bottom: 5px; }
+          </style>
+        </head>
+        <body>
+          <h2>📚 Documentation Search Results</h2>
+          <p><strong>Query:</strong> ${query}</p>
+          <p><strong>Found:</strong> ${result.totalFound} results in ${result.queryTime}ms</p>
+          ${result.chunks.map((chunk, index) => `
+            <div class="result">
+              <div class="heading">${index + 1}. ${chunk.headings.join(' > ') || 'Documentation'}</div>
+              <div class="score">Score: ${(chunk.score * 100).toFixed(1)}% | <a href="${chunk.url}" class="url">${chunk.url}</a></div>
+              <div class="text">${chunk.text.substring(0, 500)}${chunk.text.length > 500 ? '...' : ''}</div>
+            </div>
+          `).join('')}
+        </body>
+        </html>`;
+
+        panel.webview.html = html;
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Documentation query failed: ${message}`);
+    }
+  });
+
+  context.subscriptions.push(startCommand, cancelCommand, queryCommand);
 }
 
 export function deactivate(): void {

@@ -14,11 +14,26 @@
     "commands": [
       {
         "command": "docpilot.ingestUrl",
-        "title": "DocPilot: Ingest Documentation URL"
+        "title": "DocPilot: Ingest Documentation URL",
+        "category": "DocPilot"
       },
       {
         "command": "docpilot.cancelIngestion",
-        "title": "DocPilot: Cancel Ingestion"
+        "title": "DocPilot: Cancel Ingestion",
+        "category": "DocPilot"
+      },
+      {
+        "command": "docpilot.queryDocs",
+        "title": "DocPilot: Query Documentation",
+        "category": "DocPilot"
+      }
+    ],
+    "chatParticipants": [
+      {
+        "id": "docpilot.assistant",
+        "name": "docpilot",
+        "description": "AI assistant with access to your ingested documentation",
+        "isSticky": true
       }
     ]
   },

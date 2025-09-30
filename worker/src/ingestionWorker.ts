@@ -273,6 +273,13 @@ export class IngestionWorker {
       const summary = summarizeChunks(chunks);
 
       // Index chunks in vector store
+      this.emitPageProgress({
+        jobId: config.jobId,
+        url,
+        depth,
+        status: 'embedding'
+      });
+
       try {
         await this.retrievalEngine.indexChunks(config.jobId, url, chunks);
         
@@ -289,7 +296,15 @@ export class IngestionWorker {
           url,
           depth,
           status: 'failed',
-          reason
+          reason: `Embedding failed: ${reason}`
+        });
+        
+        // Continue processing but log the error
+        this.port.postMessage({
+          type: 'worker-error',
+          payload: {
+            message: `Failed to embed chunks for ${url}: ${reason}`
+          }
         });
         return;
       }

@@ -145,15 +145,24 @@ export class WorkerManager extends EventEmitter implements vscode.Disposable {
     }
 
     if (event.type === 'page-progress') {
+      const status = event.payload.status;
+      const emoji = status === 'indexed' ? '✅' : status === 'embedding' ? '🧠' : status === 'failed' ? '❌' : '📄';
       this.output.appendLine(
-        `[worker] page ${event.payload.url} depth=${event.payload.depth} status=${event.payload.status} ${event.payload.reason ?? ''}`
+        `[worker] ${emoji} ${event.payload.url} (depth=${event.payload.depth}) ${status} ${event.payload.reason ?? ''}`
       );
       return;
     }
 
     if (event.type === 'page-result') {
       this.output.appendLine(
-        `[worker] page result ${event.payload.url} chunks=${event.payload.chunks.length} words=${event.payload.summary.totalWords}`
+        `[worker] 📚 result ${event.payload.url} chunks=${event.payload.chunks.length} words=${event.payload.summary.totalWords}`
+      );
+      return;
+    }
+
+    if (event.type === 'query-result') {
+      this.output.appendLine(
+        `[worker] 🔍 query returned ${event.payload.chunks.length} results in ${event.payload.queryTime}ms`
       );
     }
   }

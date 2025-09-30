@@ -24,6 +24,7 @@ export type PageLifecycleStatus =
   | 'queued'
   | 'fetching'
   | 'parsed'
+  | 'embedding'
   | 'indexed'
   | 'skipped'
   | 'failed';
