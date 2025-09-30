@@ -6,6 +6,7 @@ import { IngestionWorker } from './ingestionWorker';
 type WorkerBootstrapData = {
   additionalNodePaths?: string[];
   isPackaged?: boolean;
+  storagePath?: string;
 };
 
 function registerAdditionalModulePaths(): void {
@@ -43,7 +44,8 @@ async function bootstrap(): Promise<void> {
     process.exit(1);
   }
 
-  const worker = new IngestionWorker(port);
+  const data = (workerData ?? {}) as WorkerBootstrapData;
+  const worker = new IngestionWorker(port, data.storagePath);
   await worker.bind();
 
   process.on('uncaughtException', (error) => {

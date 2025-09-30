@@ -54,12 +54,12 @@ export class IngestionWorker {
   private jobState: JobState | null = null;
   private retrievalEngine: RetrievalEngine;
 
-  constructor(private readonly port: MessagePort) {
+  constructor(private readonly port: MessagePort, private readonly storagePath?: string) {
     this.retrievalEngine = new RetrievalEngine();
   }
 
   public async bind(): Promise<void> {
-    await this.retrievalEngine.initialize();
+    await this.retrievalEngine.initialize(this.storagePath);
     
     this.port.on('message', (message) => this.onMessage(message));
     this.port.on('close', () => {

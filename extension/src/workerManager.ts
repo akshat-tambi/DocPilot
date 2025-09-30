@@ -55,8 +55,8 @@ export class WorkerManager extends EventEmitter implements vscode.Disposable {
       return;
     }
 
-    const packagedWorkerEntry = path.join(this.context.extensionPath, 'runtime', 'worker', 'index.js');
-    const devWorkerEntry = path.join(this.context.extensionPath, '..', 'worker', 'dist', 'index.js');
+    const packagedWorkerEntry = path.join(this.context.extensionPath, 'runtime', 'worker', 'src', 'index.js');
+    const devWorkerEntry = path.join(this.context.extensionPath, '..', 'worker', 'dist', 'src', 'index.js');
     const runtimeNodeModules = path.join(this.context.extensionPath, 'runtime', 'node_modules');
 
     const isPackaged = fs.existsSync(packagedWorkerEntry);
@@ -69,11 +69,15 @@ export class WorkerManager extends EventEmitter implements vscode.Disposable {
 
     this.output.appendLine(`[docpilot] starting worker: ${workerEntry} (packaged=${isPackaged})`);
 
+    // Create storage path in extension global storage
+    const storagePath = path.join(this.context.globalStorageUri.fsPath, 'chroma_db');
+    
     this.worker = new Worker(workerEntry, {
       execArgv: process.env.DOCPILOT_ENABLE_SOURCE_MAPS ? ['--enable-source-maps'] : [],
       workerData: {
         additionalNodePaths,
-        isPackaged
+        isPackaged,
+        storagePath
       }
     });
 

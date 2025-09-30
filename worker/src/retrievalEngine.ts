@@ -127,7 +127,7 @@ export class RetrievalEngine {
     }
 
     try {
-      await this.vectorStore.deleteByJobId(jobId);
+      await this.vectorStore.clearJob(jobId);
     } catch (error) {
       throw new Error(`Failed to delete job: ${error instanceof Error ? error.message : String(error)}`);
     }

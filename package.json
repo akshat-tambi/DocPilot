@@ -28,6 +28,12 @@
       "@vscode/vsce-sign",
       "keytar",
       "sharp"
+    ],
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "onnxruntime-node",
+      "protobufjs",
+      "unrs-resolver"
     ]
   }
 }

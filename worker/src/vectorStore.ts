@@ -1,4 +1,3 @@
-import { ChromaClient, Collection, OpenAIEmbeddingFunction } from 'chromadb';
 import type { TextChunk } from '@docpilot/shared';
 
 export interface VectorDocument {
@@ -17,60 +16,56 @@ export interface SearchResult {
   score: number;
 }
 
+interface StoredVector {
+  id: string;
+  vector: Float32Array;
+  document: VectorDocument;
+}
+
 export class VectorStore {
-  private client: ChromaClient | null = null;
-  private collection: Collection | null = null;
-  private readonly collectionName = 'docpilot_chunks';
+  private vectors: StoredVector[] = [];
+  private storagePath: string | null = null;
 
   public async initialize(storagePath?: string): Promise<void> {
     try {
-      this.client = new ChromaClient({
-        path: storagePath || './chroma_db'
-      });
-
-      this.collection = await this.client.getOrCreateCollection({
-        name: this.collectionName,
-        metadata: { 
-          description: 'DocPilot documentation chunks',
-          created: new Date().toISOString()
-        }
-      });
+      this.storagePath = storagePath || null;
+      if (storagePath) {
+        console.log(`Vector store initialized for path: ${storagePath}`);
+      }
+      console.log('In-memory vector store initialized');
     } catch (error) {
       throw new Error(`Failed to initialize vector store: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   public async addChunks(jobId: string, url: string, chunks: TextChunk[], vectors: Float32Array[]): Promise<void> {
-    if (!this.collection) {
-      throw new Error('Vector store not initialized');
-    }
-
     if (chunks.length !== vectors.length) {
       throw new Error('Chunks and vectors array length mismatch');
     }
 
     try {
-      const documents = chunks.map((chunk, index) => ({
-        id: `${jobId}_${chunk.id}`,
-        document: chunk.text,
-        metadatas: {
+      chunks.forEach((chunk, index) => {
+        const document: VectorDocument = {
+          id: `${jobId}_${chunk.id}`,
           jobId,
           url,
           chunkIndex: index,
-          chunkId: chunk.id,
-          headings: JSON.stringify(chunk.headingPath || []),
-          wordCount: chunk.wordCount,
-          charCount: chunk.charCount,
-          createdAt: chunk.createdAt
-        },
-        embeddings: Array.from(vectors[index])
-      }));
+          text: chunk.text,
+          headings: chunk.headingPath || [],
+          vector: Array.from(vectors[index]),
+          metadata: {
+            chunkId: chunk.id,
+            wordCount: chunk.wordCount,
+            charCount: chunk.charCount,
+            createdAt: chunk.createdAt
+          }
+        };
 
-      await this.collection.add({
-        ids: documents.map(d => d.id),
-        documents: documents.map(d => d.document),
-        metadatas: documents.map(d => d.metadatas),
-        embeddings: documents.map(d => d.embeddings)
+        this.vectors.push({
+          id: document.id,
+          vector: vectors[index],
+          document
+        });
       });
     } catch (error) {
       throw new Error(`Failed to add chunks to vector store: ${error instanceof Error ? error.message : String(error)}`);
@@ -78,65 +73,45 @@ export class VectorStore {
   }
 
   public async search(queryVector: Float32Array, limit: number = 10, jobIds?: string[]): Promise<SearchResult[]> {
-    if (!this.collection) {
-      throw new Error('Vector store not initialized');
-    }
-
     try {
-      const where = jobIds && jobIds.length > 0 ? { jobId: { $in: jobIds } } : undefined;
-
-      const results = await this.collection.query({
-        queryEmbeddings: [Array.from(queryVector)],
-        nResults: limit,
-        where
-      });
-
-      if (!results.ids || !results.documents || !results.metadatas || !results.distances) {
-        return [];
+      let candidateVectors = this.vectors;
+      if (jobIds && jobIds.length > 0) {
+        candidateVectors = this.vectors.filter(v => jobIds.includes(v.document.jobId));
       }
 
-      return results.ids[0].map((id, index) => ({
-        document: {
-          id: id as string,
-          jobId: (results.metadatas![0][index] as any).jobId,
-          url: (results.metadatas![0][index] as any).url,
-          chunkIndex: (results.metadatas![0][index] as any).chunkIndex,
-          text: results.documents![0][index] as string,
-          headings: JSON.parse((results.metadatas![0][index] as any).headings || '[]'),
-          vector: [],
-          metadata: results.metadatas![0][index] as Record<string, any>
-        },
-        score: 1 - (results.distances![0][index] as number) // Convert distance to similarity
-      })).sort((a, b) => b.score - a.score);
-    } catch (error) {
-      throw new Error(`Vector search failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  public async deleteByJobId(jobId: string): Promise<void> {
-    if (!this.collection) {
-      throw new Error('Vector store not initialized');
-    }
-
-    try {
-      await this.collection.delete({
-        where: { jobId }
+      const results: SearchResult[] = candidateVectors.map(stored => {
+        const similarity = this.cosineSimilarity(queryVector, stored.vector);
+        return {
+          document: stored.document,
+          score: similarity
+        };
       });
+
+      return results
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit);
     } catch (error) {
-      throw new Error(`Failed to delete job chunks: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to search vector store: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  public async getCollectionInfo(): Promise<{ count: number; metadata: any }> {
-    if (!this.collection) {
-      throw new Error('Vector store not initialized');
-    }
-
+  public async clearJob(jobId: string): Promise<void> {
     try {
-      const count = await this.collection.count();
+      this.vectors = this.vectors.filter(v => v.document.jobId !== jobId);
+    } catch (error) {
+      throw new Error(`Failed to clear job from vector store: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  public async getCollectionInfo(): Promise<{ count: number; metadata: Record<string, any> }> {
+    try {
       return {
-        count,
-        metadata: this.collection.metadata || {}
+        count: this.vectors.length,
+        metadata: {
+          description: 'DocPilot documentation chunks (in-memory)',
+          created: new Date().toISOString(),
+          storagePath: this.storagePath
+        }
       };
     } catch (error) {
       throw new Error(`Failed to get collection info: ${error instanceof Error ? error.message : String(error)}`);
@@ -144,7 +119,30 @@ export class VectorStore {
   }
 
   public dispose(): void {
-    this.collection = null;
-    this.client = null;
+    this.vectors = [];
+    this.storagePath = null;
+  }
+
+  private cosineSimilarity(a: Float32Array, b: Float32Array): number {
+    if (a.length !== b.length) {
+      throw new Error('Vector dimensions must match');
+    }
+
+    let dotProduct = 0;
+    let normA = 0;
+    let normB = 0;
+
+    for (let i = 0; i < a.length; i++) {
+      dotProduct += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
+
+    const magnitude = Math.sqrt(normA) * Math.sqrt(normB);
+    if (magnitude === 0) {
+      return 0;
+    }
+
+    return dotProduct / magnitude;
   }
 }
