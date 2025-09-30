@@ -9,6 +9,15 @@
     "lint": "eslint \"src/**/*.ts\"",
     "test": "echo \"no worker tests yet\""
   },
-  "dependencies": {},
-  "devDependencies": {}
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.12",
+    "p-queue": "^7.4.1",
+  "remark-parse": "^11.0.0",
+  "strip-markdown": "^5.0.1",
+    "undici": "^6.19.8",
+    "unified": "^11.0.4"
+  },
+  "devDependencies": {
+    "@types/cheerio": "^0.22.35"
+  }
 }

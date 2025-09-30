@@ -2,6 +2,7 @@ module.exports = {
   root: true,
   parser: '@typescript-eslint/parser',
   parserOptions: {
+    project: ['./tsconfig.eslint.json'],
     tsconfigRootDir: __dirname,
     ecmaVersion: 2021,
     sourceType: 'module'
@@ -14,7 +15,9 @@ module.exports = {
   extends: ['eslint:recommended', 'plugin:@typescript-eslint/recommended', 'plugin:import/recommended', 'prettier'],
   settings: {
     'import/resolver': {
-      typescript: true
+      typescript: {
+        project: ['./tsconfig.eslint.json']
+      }
     }
   },
   rules: {

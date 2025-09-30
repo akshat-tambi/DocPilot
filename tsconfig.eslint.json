@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.base.json",
+  "include": [
+    "extension/src/**/*.ts",
+    "shared/src/**/*.ts",
+    "worker/src/**/*.ts",
+    "shared/vitest.config.ts"
+  ]
+}

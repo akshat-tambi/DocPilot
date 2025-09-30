@@ -8,8 +8,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint \"src/**/*.ts\"",
-    "test": "echo \"no shared tests yet\""
+    "test": "vitest --run --config vitest.config.ts"
   },
-  "dependencies": {},
+  "dependencies": {
+    "nanoid": "^5.0.6"
+  },
   "devDependencies": {}
 }
