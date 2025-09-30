@@ -10,12 +10,13 @@
     "test": "echo \"no worker tests yet\""
   },
   "dependencies": {
+    "@docpilot/shared": "workspace:*",
     "cheerio": "^1.0.0-rc.12",
-    "p-queue": "^7.4.1",
-  "remark-parse": "^11.0.0",
-  "strip-markdown": "^5.0.1",
+    "p-queue": "^6.6.2",
+    "remark-parse": "^10.0.2",
+    "strip-markdown": "^4.1.0",
     "undici": "^6.19.8",
-    "unified": "^11.0.4"
+    "unified": "^10.1.2"
   },
   "devDependencies": {
     "@types/cheerio": "^0.22.35"
