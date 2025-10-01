@@ -51,7 +51,7 @@ export class ContextAugmenter {
       this.handleContextRequest.bind(this)
     );
     
-    participant.iconPath = vscode.Uri.joinPath(context.extensionUri, 'assets', 'icon.png');
+    participant.iconPath = new vscode.ThemeIcon('rocket');
     participant.followupProvider = {
       provideFollowups: this.provideFollowups.bind(this)
     };
@@ -239,7 +239,7 @@ Please open a workspace folder first.`);
 
 📄 [${filename}](${filePath.toString()})
 
-*Click the file link above to open it, then copy the contents to attach to your Copilot chat.*`);
+*Click the file link above to open it, then attach as context to your Copilot chat.*`);
         
         // Optionally open the file automatically
         const doc = await vscode.workspace.openTextDocument(filePath);
@@ -250,7 +250,7 @@ Please open a workspace folder first.`);
         // Fallback to showing in chat if file creation fails
         stream.markdown(`
 
-**Fallback - Copy this markdown:**
+**Fallback - Attach this as context:**
 
 \`\`\`markdown
 `);
