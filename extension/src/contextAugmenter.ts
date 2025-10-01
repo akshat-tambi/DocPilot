@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { WorkerManager } from './workerManager';
-import { DocPilotPanel, DocumentSource } from './docPilotPanel';
+import { DocumentSource } from './sidebarProvider';
 
 export interface RetrievalResult {
   chunks: Array<{
@@ -18,17 +18,27 @@ export interface RetrievalResult {
  * with relevant documentation context based on user-selected sources.
  */
 export class ContextAugmenter {
-  private readonly workerManager: WorkerManager;
-  private readonly outputChannel: vscode.OutputChannel;
-  private docPilotPanel: DocPilotPanel | null = null;
+  private workerManager: WorkerManager;
+  private outputChannel: vscode.OutputChannel;
+  private extensionContext: vscode.ExtensionContext;
 
-  constructor(workerManager: WorkerManager, outputChannel: vscode.OutputChannel) {
+  constructor(workerManager: WorkerManager, outputChannel: vscode.OutputChannel, extensionContext: vscode.ExtensionContext) {
     this.workerManager = workerManager;
     this.outputChannel = outputChannel;
+    this.extensionContext = extensionContext;
   }
 
-  public setPanel(panel: DocPilotPanel) {
-    this.docPilotPanel = panel;
+  private getEnabledSources(): DocumentSource[] {
+    const sources = this.extensionContext.workspaceState.get<DocumentSource[]>('docpilot.sources', []);
+    return sources.filter(s => s.enabled && s.status === 'success');
+  }
+
+  private getAugmentationSettings() {
+    const config = vscode.workspace.getConfiguration('docpilot');
+    return {
+      enabled: config.get<boolean>('contextAugmentation.enabled', true),
+      maxChunks: config.get<number>('contextAugmentation.maxChunks', 3)
+    };
   }
 
   /**
@@ -67,9 +77,8 @@ export class ContextAugmenter {
     if (configResolver) {
       configResolver.contributeVariable('docpilot.context', async () => {
         try {
-          if (!this.docPilotPanel) return undefined;
-          
-          const enabledSources = this.docPilotPanel.getEnabledSources();
+          const enabledSources = this.getEnabledSources();
+          if (enabledSources.length === 0) return undefined;
           if (enabledSources.length === 0) return undefined;
           
           const retrievalResult = await this.retrieveContext('documentation context', enabledSources);
@@ -110,9 +119,8 @@ export class ContextAugmenter {
     // Watch for changes to update the context file
     const updateContextFile = async () => {
       try {
-        if (!this.docPilotPanel) return;
-        
-        const enabledSources = this.docPilotPanel.getEnabledSources();
+        const enabledSources = this.getEnabledSources();
+        if (enabledSources.length === 0) return;
         if (enabledSources.length === 0) {
           // Remove context file if no sources
           try {
@@ -160,17 +168,17 @@ ${this.formatContextAsText(retrievalResult, 5)}
     token: vscode.CancellationToken
   ): Promise<vscode.ChatResult> {
     try {
-      if (!this.docPilotPanel) {
+      const settings = this.getAugmentationSettings();
+      const enabledSources = this.getEnabledSources();
+      
+      if (enabledSources.length === 0) {
         stream.markdown(`🚀 **DocPilot Context Generator**
 
-Please open the DocPilot panel first to configure documentation sources.
+No documentation sources configured. Please add sources in the DocPilot sidebar.
 
-Run: \`DocPilot: Open Panel\` command`);
+Open the DocPilot panel from the activity bar (🚀 icon) to add documentation sources.`);
         return { metadata: { command: 'docpilot.context' } };
       }
-
-      const settings = this.docPilotPanel.getAugmentationSettings();
-      const enabledSources = this.docPilotPanel.getEnabledSources();
 
       if (!settings.enabled) {
         stream.markdown(`🔄 **Context generation is disabled**
@@ -256,7 +264,7 @@ Please open a workspace folder first.`);
           command: 'docpilot.context',
           retrievalTime: retrievalResult.queryTime,
           totalChunks: retrievalResult.totalFound,
-          sources: enabledSources.map(s => s.name),
+          sources: enabledSources.map((s: DocumentSource) => s.name),
           contextText: contextText
         }
       };
@@ -277,7 +285,7 @@ Please open a workspace folder first.`);
    */
   private async retrieveContext(query: string, enabledSources: DocumentSource[]): Promise<RetrievalResult> {
     // Use UI settings for limiting results
-    const settings = this.docPilotPanel?.getAugmentationSettings() || { maxChunks: 5, enabled: true };
+    const settings = this.getAugmentationSettings();
     
     this.outputChannel.appendLine(`[context-augmenter] Querying with: "${query}"`);
     this.outputChannel.appendLine(`[context-augmenter] Enabled sources: ${enabledSources.map(s => s.name).join(', ')}`);
@@ -395,16 +403,12 @@ Please open a workspace folder first.`);
    */
   public async augmentPrompt(originalPrompt: string, maxContextChunks: number = 3): Promise<string> {
     try {
-      if (!this.docPilotPanel) {
-        return originalPrompt;
-      }
-
-      const settings = this.docPilotPanel.getAugmentationSettings();
+      const settings = this.getAugmentationSettings();
       if (!settings.enabled) {
         return originalPrompt;
       }
 
-      const enabledSources = this.docPilotPanel.getEnabledSources();
+      const enabledSources = this.getEnabledSources();
       if (enabledSources.length === 0) {
         return originalPrompt;
       }
