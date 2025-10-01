@@ -1,10 +1,10 @@
 {
   "name": "docpilot",
   "displayName": "DocPilot",
-  "description": "documentation-aware copilot companion",
-  "version": "0.0.0",
+  "description": "Documentation-aware Copilot companion.",
+  "version": "1.0.0",
   "private": true,
-  "publisher": "akshat",
+  "publisher": "AkshatTambi",
   "engines": {
     "vscode": "^1.90.0"
   },
