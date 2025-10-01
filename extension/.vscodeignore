@@ -1,0 +1,71 @@
+# Build and development files
+node_modules/
+.git/
+.gitignore
+.gitattributes
+
+# Source files (we only need compiled output)
+src/
+**/*.ts
+!**/*.d.ts
+tsconfig*.json
+*.tsbuildinfo
+
+# Development and testing
+test/
+tests/
+**/*.test.js
+**/*.test.ts
+**/*.spec.js
+**/*.spec.ts
+coverage/
+.nyc_output/
+vitest.config.ts
+
+# Documentation and project files
+README.md
+docs/
+CHANGELOG.md
+.editorconfig
+
+# Package management
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+pnpm-workspace.yaml
+.npmrc
+.yarnrc
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+*.log
+
+# Build tools and configs
+webpack.config.js
+rollup.config.js
+babel.config.js
+jest.config.js
+.eslintrc*
+.prettierrc*
+.env*
+
+# Temporary and cache files
+tmp/
+.cache/
+.temp/
+
+# Extension-specific exclusions
+scripts/
+
+# Keep only essential runtime files
+!runtime/
+!dist/
+!out/
