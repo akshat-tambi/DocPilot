@@ -463,6 +463,13 @@ export class DocPilotSidebarProvider implements vscode.WebviewViewProvider {
         .toggle input[type="checkbox"] {
             margin: 0;
         }
+        .custom-pages-input {
+            margin-top: 8px;
+            display: none;
+        }
+        .custom-pages-input.visible {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -494,12 +501,17 @@ export class DocPilotSidebarProvider implements vscode.WebviewViewProvider {
                 </div>
                 <div class="form-group">
                     <label>Max Pages</label>
-                    <select id="maxPages">
+                    <select id="maxPages" onchange="toggleCustomPages()">
                         <option value="10">10 Pages</option>
                         <option value="25" selected>25 Pages</option>
                         <option value="50">50 Pages</option>
                         <option value="100">100 Pages</option>
+                        <option value="custom">Custom...</option>
                     </select>
+                    <div class="custom-pages-input" id="customPagesInput">
+                        <label>Custom Page Count</label>
+                        <input type="number" id="customPages" placeholder="Enter page count" min="1" max="1000" />
+                    </div>
                 </div>
             </div>
             <button class="button" onclick="addSource()">Add Source</button>
@@ -584,11 +596,34 @@ export class DocPilotSidebarProvider implements vscode.WebviewViewProvider {
             }
         }
 
+        function toggleCustomPages() {
+            const select = document.getElementById('maxPages');
+            const customInput = document.getElementById('customPagesInput');
+            
+            if (select.value === 'custom') {
+                customInput.classList.add('visible');
+            } else {
+                customInput.classList.remove('visible');
+            }
+        }
+
         function addSource() {
             const url = document.getElementById('sourceUrl').value;
             const name = document.getElementById('sourceName').value;
             const maxDepth = parseInt(document.getElementById('maxDepth').value);
-            const maxPages = parseInt(document.getElementById('maxPages').value);
+            const maxPagesSelect = document.getElementById('maxPages').value;
+            
+            let maxPages;
+            if (maxPagesSelect === 'custom') {
+                const customPages = parseInt(document.getElementById('customPages').value);
+                if (!customPages || customPages < 1 || customPages > 1000) {
+                    alert('Please enter a valid page count between 1 and 1000');
+                    return;
+                }
+                maxPages = customPages;
+            } else {
+                maxPages = parseInt(maxPagesSelect);
+            }
 
             if (!url) {
                 return;
@@ -610,6 +645,9 @@ export class DocPilotSidebarProvider implements vscode.WebviewViewProvider {
             // Clear form
             document.getElementById('sourceUrl').value = '';
             document.getElementById('sourceName').value = '';
+            document.getElementById('maxPages').value = '25';
+            document.getElementById('customPages').value = '';
+            document.getElementById('customPagesInput').classList.remove('visible');
         }
 
         function removeSource(id) {

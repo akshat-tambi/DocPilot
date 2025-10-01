@@ -1,7 +1,7 @@
 {
-  "name": "docpilot",
-  "displayName": "DocPilot",
-  "description": "Documentation-aware Copilot companion.",
+  "name": "docspilot",
+  "displayName": "DocsPilot",
+  "description": "documentation-aware copilot companion",
   "version": "1.0.0",
   "private": true,
   "publisher": "AkshatTambi",
