@@ -74,18 +74,6 @@ export class DocPilotSidebarProvider implements vscode.WebviewViewProvider {
     // Handle messages from the webview
     webviewView.webview.onDidReceiveMessage(
       async (message) => {
-        if (message.type === 'viewFullDoc') {
-          // Create a new webview panel for full documentation view
-          const panel = vscode.window.createWebviewPanel(
-            'docpilot.fullDoc',
-            'Documentation',
-            vscode.ViewColumn.One,
-            { enableScripts: true }
-          );
-          const item = message.data.item;
-          panel.webview.html = this._getFullDocHtml(item);
-          return;
-        }
         if (message.type === 'copyCode') {
           // Copy code to clipboard
           await vscode.env.clipboard.writeText(message.data.code);
@@ -315,142 +303,6 @@ export class DocPilotSidebarProvider implements vscode.WebviewViewProvider {
         this.sendState();
       }
     }
-  }
-
-  private _getFullDocHtml(item: any): string {
-    const answer = item.answer && item.answerConfidence && item.answerConfidence > 0.3 
-      ? `<div class="answer-box">
-          <div class="answer-label">Answer ${item.answerConfidence ? `(${Math.round(item.answerConfidence * 100)}% confidence)` : ''}</div>
-          <div>${this._escapeHtml(item.answer)}</div>
-        </div>` 
-      : '';
-    
-    const summary = item.summary 
-      ? `<div class="summary-section">
-          <h3>Summary</h3>
-          <p>${this._escapeHtml(item.summary)}</p>
-        </div>` 
-      : '';
-    
-    const codeExamples = item.codeExamples && item.codeExamples.length > 0
-      ? `<div class="code-section">
-          <h3>Code Examples</h3>
-          ${item.codeExamples.map((code: any) => `
-            <div class="code-example">
-              <div class="code-label">${code.language || 'text'}</div>
-              <pre><code>${this._escapeHtml(code.code)}</code></pre>
-            </div>
-          `).join('')}
-        </div>`
-      : '';
-    
-    const fullText = item.text 
-      ? `<div class="full-text">
-          <h3>Full Documentation</h3>
-          <div>${this._escapeHtml(item.text)}</div>
-        </div>`
-      : '';
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${item.heading || 'Documentation'}</title>
-    <style>
-        body {
-            font-family: var(--vscode-font-family);
-            font-size: var(--vscode-font-size);
-            color: var(--vscode-foreground);
-            background-color: var(--vscode-editor-background);
-            padding: 24px;
-            line-height: 1.6;
-            max-width: 900px;
-            margin: 0 auto;
-        }
-        h1, h2, h3 {
-            margin-top: 24px;
-            margin-bottom: 12px;
-        }
-        h1 {
-            font-size: 24px;
-            border-bottom: 1px solid var(--vscode-panel-border);
-            padding-bottom: 8px;
-        }
-        h3 {
-            font-size: 16px;
-            color: var(--vscode-titleBar-activeForeground);
-        }
-        .source-url {
-            font-size: 12px;
-            color: var(--vscode-descriptionForeground);
-            margin-bottom: 20px;
-        }
-        .source-url a {
-            color: var(--vscode-textLink-foreground);
-            text-decoration: none;
-        }
-        .source-url a:hover {
-            text-decoration: underline;
-        }
-        .answer-box {
-            background: var(--vscode-textBlockQuote-background);
-            border-left: 4px solid var(--vscode-textLink-foreground);
-            padding: 16px;
-            margin: 16px 0;
-            border-radius: 4px;
-        }
-        .answer-label {
-            font-weight: 600;
-            font-size: 12px;
-            text-transform: uppercase;
-            color: var(--vscode-textLink-foreground);
-            margin-bottom: 8px;
-        }
-        .summary-section {
-            margin: 20px 0;
-        }
-        .code-section {
-            margin: 20px 0;
-        }
-        .code-example {
-            background: var(--vscode-textCodeBlock-background);
-            border: 1px solid var(--vscode-input-border);
-            border-radius: 4px;
-            padding: 12px;
-            margin: 12px 0;
-            overflow-x: auto;
-        }
-        .code-label {
-            font-size: 11px;
-            color: var(--vscode-descriptionForeground);
-            margin-bottom: 8px;
-            text-transform: uppercase;
-        }
-        .code-example pre {
-            margin: 0;
-            font-family: var(--vscode-editor-font-family);
-            font-size: 13px;
-        }
-        .code-example code {
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
-        .full-text {
-            margin: 20px 0;
-            white-space: pre-wrap;
-        }
-    </style>
-</head>
-<body>
-    <h1>${item.heading || 'Documentation'}</h1>
-    ${item.url ? `<div class="source-url">📄 <a href="${item.url}">${item.url}</a></div>` : ''}
-    ${answer}
-    ${summary}
-    ${codeExamples}
-    ${fullText}
-</body>
-</html>`;
   }
 
   private _escapeHtml(text: string): string {
@@ -1001,13 +853,12 @@ export class DocPilotSidebarProvider implements vscode.WebviewViewProvider {
               
               // Actions
               html += '<div class="suggestion-actions">';
-              html += '<button class="action-btn primary" onclick="viewFull(' + idx + ')" aria-label="View full documentation">📖 View Full</button>';
               if (item.codeExamples && item.codeExamples.length > 0) {
                 html += '<button class="action-btn" onclick="copyCode(' + idx + ')" aria-label="Copy code example">📋 Copy Code</button>';
               }
               html += '<button class="action-btn" onclick="openSource(' + idx + ')" aria-label="Open source URL">🔗 Open Source</button>';
-              html += '<button class="action-btn" onclick="rateSuggestion(' + idx + ', 1)" aria-label="Thumbs up">👍</button>';
-              html += '<button class="action-btn" onclick="rateSuggestion(' + idx + ', -1)" aria-label="Thumbs down">👎</button>';
+              // html += '<button class="action-btn" onclick="rateSuggestion(' + idx + ', 1)" aria-label="Thumbs up">👍</button>';
+              // html += '<button class="action-btn" onclick="rateSuggestion(' + idx + ', -1)" aria-label="Thumbs down">👎</button>';
               html += '</div>';
               
               html += '</div>';
@@ -1041,12 +892,6 @@ export class DocPilotSidebarProvider implements vscode.WebviewViewProvider {
           if (content && arrow) {
             content.classList.toggle('collapsed');
             arrow.textContent = content.classList.contains('collapsed') ? '▶' : '▼';
-          }
-        }
-        function viewFull(idx) {
-          var item = window.latestDocSuggestions[idx];
-          if (item) {
-            vscode.postMessage({ type: 'viewFullDoc', data: { item: item, index: idx } });
           }
         }
         function copyCode(idx) {
