@@ -14,6 +14,9 @@ let sidebarProviderInstance: DocPilotSidebarProvider | null = null;
 let activeJobId: string | null = null;
 let activeQueryStatus: vscode.Disposable | null = null;
 
+// Simple in-memory cache for doc suggestions
+const docSuggestionCache: Map<string, any> = new Map();
+
 export function activate(context: vscode.ExtensionContext): void {
   // Initialize worker manager
   workerManager = new WorkerManager(context);
@@ -115,7 +118,12 @@ export function activate(context: vscode.ExtensionContext): void {
         const contextText = `${symbol}\n${contextLines.join('\n')}`.trim();
         if (workerManager && symbol) {
           try {
-            const result = await workerManager.query(contextText, undefined, 3);
+            // Use cache if available
+            let result = docSuggestionCache.get(contextText);
+            if (!result) {
+              result = await workerManager.query(contextText, undefined, 3);
+              docSuggestionCache.set(contextText, result);
+            }
             if (result.chunks.length > 0) {
               // Send suggestions to sidebar
               if (sidebarProviderInstance && sidebarProviderInstance['_view']) {
