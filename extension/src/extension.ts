@@ -74,19 +74,24 @@ export function activate(context: vscode.ExtensionContext): void {
       if (wordRange) {
         symbol = document.getText(wordRange);
       }
-      // Optionally, get the enclosing function or class name
-      // For now, just log symbol and a few lines of context
       const startLine = Math.max(0, position.line - 3);
       const endLine = Math.min(document.lineCount - 1, position.line + 3);
       let contextLines = [];
       for (let i = startLine; i <= endLine; i++) {
         contextLines.push(document.lineAt(i).text);
       }
-      // This is where context-aware doc suggestion will be triggered
-      // For now, just log to output
-      if (contextAugmenter) {
-        contextAugmenter.outputChannel.appendLine(`symbol: ${symbol}`);
-        contextAugmenter.outputChannel.appendLine(`context:\n${contextLines.join('\n')}`);
+      const contextText = `${symbol}\n${contextLines.join('\n')}`.trim();
+      if (workerManager && symbol) {
+        try {
+          const result = await workerManager.query(contextText, undefined, 3);
+          if (contextAugmenter) {
+            contextAugmenter.outputChannel.appendLine(`[selection] found ${result.chunks.length} docs for '${symbol}'`);
+          }
+        } catch (err) {
+          if (contextAugmenter) {
+            contextAugmenter.outputChannel.appendLine(`[selection] query error: ${err}`);
+          }
+        }
       }
     })
   );
@@ -105,9 +110,18 @@ export function activate(context: vscode.ExtensionContext): void {
         for (let i = startLine; i <= endLine; i++) {
           contextLines.push(document.lineAt(i).text);
         }
-        if (contextAugmenter) {
-          contextAugmenter.outputChannel.appendLine(`[hover] symbol: ${symbol}`);
-          contextAugmenter.outputChannel.appendLine(`[hover] context:\n${contextLines.join('\n')}`);
+        const contextText = `${symbol}\n${contextLines.join('\n')}`.trim();
+        if (workerManager && symbol) {
+          try {
+            const result = await workerManager.query(contextText, undefined, 3);
+            if (contextAugmenter) {
+              contextAugmenter.outputChannel.appendLine(`[hover] found ${result.chunks.length} docs for '${symbol}'`);
+            }
+          } catch (err) {
+            if (contextAugmenter) {
+              contextAugmenter.outputChannel.appendLine(`[hover] query error: ${err}`);
+            }
+          }
         }
         return undefined;
       }
