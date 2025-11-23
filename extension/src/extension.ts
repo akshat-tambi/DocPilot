@@ -114,8 +114,13 @@ export function activate(context: vscode.ExtensionContext): void {
         if (workerManager && symbol) {
           try {
             const result = await workerManager.query(contextText, undefined, 3);
-            if (contextAugmenter) {
-              contextAugmenter.outputChannel.appendLine(`[hover] found ${result.chunks.length} docs for '${symbol}'`);
+            if (result.chunks.length > 0) {
+              const md = result.chunks.map((item, idx) => {
+                let link = item.url ? `[source](${item.url})` : '';
+                let heading = item.headings && item.headings.length > 0 ? item.headings.join(' > ') : '';
+                return `**${heading}**\n${item.chunk.text}\n${link}`;
+              }).join('\n---\n');
+              return new vscode.Hover(new vscode.MarkdownString(md));
             }
           } catch (err) {
             if (contextAugmenter) {
