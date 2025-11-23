@@ -2,17 +2,12 @@
   "compilerOptions": {
     "target": "ES2020",
     "module": "CommonJS",
-    "moduleResolution": "Node",
     "lib": ["ES2020"],
     "types": ["node"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "baseUrl": ".",
-    "paths": {
-      "@docpilot/worker/*": ["worker/src/*"]
-    }
+    "forceConsistentCasingInFileNames": true
   },
   "include": []
 }

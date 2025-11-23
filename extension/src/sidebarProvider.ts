@@ -301,6 +301,7 @@ export class DocPilotSidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private _getHtmlForWebview(webview: vscode.Webview) {
+    // The script block is moved to the end and all event handlers are registered via JS, not inline attributes.
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -526,14 +527,14 @@ export class DocPilotSidebarProvider implements vscode.WebviewViewProvider {
                         <option value="50">50 Pages</option>
                         <option value="100">100 Pages</option>
                         <option value="custom">Custom...</option>
-                    </select>
-                    <div class="custom-pages-input" id="customPagesInput">
+                      </select>
+                      <div class="custom-pages-input" id="customPagesInput">
                         <label>Custom Page Count</label>
                         <input type="number" id="customPages" placeholder="Enter page count" min="1" max="1000" />
-                    </div>
+                      </div>
                 </div>
             </div>
-            <button class="button" onclick="addSource()">Add Source</button>
+                <button class="button" id="addSourceBtn">Add Source</button>
         </div>
     </div>
 
@@ -574,13 +575,26 @@ export class DocPilotSidebarProvider implements vscode.WebviewViewProvider {
         // Request initial state
         vscode.postMessage({ type: 'getState' });
 
+
         // Handle messages from extension
+        window.latestDocSuggestions = [];
         window.addEventListener('message', event => {
-            const message = event.data;
-            if (message.type === 'state') {
-                currentState = message.data;
-                updateUI();
-            }
+          const message = event.data;
+          console.log('[DocPilot Sidebar] Received message:', message);
+          console.log('[DocPilot Sidebar] Message type:', message.type);
+          console.log('[DocPilot Sidebar] Message data:', message.data);
+          
+          if (message.type === 'state') {
+            currentState = message.data;
+            console.log('[DocPilot Sidebar] Updated state, calling updateUI');
+            updateUI();
+          }
+          if (message.type === 'setDocSuggestions') {
+            console.log('[DocPilot Sidebar] Received doc suggestions:', message.data?.length || 0);
+            window.latestDocSuggestions = message.data || [];
+            console.log('[DocPilot Sidebar] Updated latestDocSuggestions, calling updateUI');
+            updateUI();
+          }
         });
 
         function updateUI() {
@@ -595,49 +609,74 @@ export class DocPilotSidebarProvider implements vscode.WebviewViewProvider {
           if (currentState.sources.length === 0) {
             sourcesList.innerHTML = '<div class="empty-state">No documentation sources added yet.<br>Add a source above to get started.</div>';
           } else {
-            sourcesList.innerHTML = currentState.sources.map(source => `
-              <div class="source-item">
-                <div class="source-header">
-                  <div class="source-name">${source.name}</div>
-                  <span class="status-badge status-${source.status}">${source.status}</span>
-                </div>
-                <div class="source-url">${source.url}</div>
-                ${source.stats ? `<div class="source-stats">📄 ${source.stats.pagesScraped} pages • 📦 ${source.stats.chunksCreated} chunks</div>` : ''}
-                <div class="source-actions">
-                  <button class="button small ${source.enabled ? 'secondary' : ''}" onclick="toggleSource('${source.id}')">
-                    ${source.enabled ? 'Disable' : 'Enable'}
-                  </button>
-                  ${source.status !== 'scraping' ? `<button class="button small" onclick="startScraping('${source.id}')">Scrape</button>` : ''}
-                  <button class="button small danger" onclick="removeSource('${source.id}')">Remove</button>
-                </div>
-              </div>
-            `).join('');
+            sourcesList.innerHTML = currentState.sources.map(source => {
+              return (
+                '<div class="source-item">' +
+                  '<div class="source-header">' +
+                    '<div class="source-name">' + source.name + '</div>' +
+                    '<span class="status-badge status-' + source.status + '">' + source.status + '</span>' +
+                  '</div>' +
+                  '<div class="source-url">' + source.url + '</div>' +
+                  (source.stats ? '<div class="source-stats">📄 ' + source.stats.pagesScraped + ' pages • 📦 ' + source.stats.chunksCreated + ' chunks</div>' : '') +
+                  '<div class="source-actions">' +
+                    '<button class="button small ' + (source.enabled ? 'secondary' : '') + ' toggle-source" data-id="' + source.id + '">' +
+                      (source.enabled ? 'Disable' : 'Enable') +
+                    '</button>' +
+                    (source.status !== 'scraping' ? '<button class="button small start-scraping" data-id="' + source.id + '">Scrape</button>' : '') +
+                    '<button class="button small danger remove-source" data-id="' + source.id + '">Remove</button>' +
+                  '</div>' +
+                '</div>'
+              );
+            }).join('');
+
+            // Attach event listeners for new buttons
+            sourcesList.querySelectorAll('.toggle-source').forEach(btn => {
+              btn.addEventListener('click', e => {
+                vscode.postMessage({ type: 'toggleSource', data: { id: btn.getAttribute('data-id') } });
+              });
+            });
+            sourcesList.querySelectorAll('.start-scraping').forEach(btn => {
+              btn.addEventListener('click', e => {
+                vscode.postMessage({ type: 'startScraping', data: { id: btn.getAttribute('data-id') } });
+              });
+            });
+            sourcesList.querySelectorAll('.remove-source').forEach(btn => {
+              btn.addEventListener('click', e => {
+                vscode.postMessage({ type: 'removeSource', data: { id: btn.getAttribute('data-id') } });
+              });
+            });
           }
 
           // Update doc suggestions (placeholder, to be wired from extension)
           const docSuggestions = document.getElementById('docSuggestions');
+          console.log('[DocPilot Sidebar UI] Updating doc suggestions, count:', window.latestDocSuggestions?.length || 0);
           if (window.latestDocSuggestions && window.latestDocSuggestions.length > 0) {
-            docSuggestions.innerHTML = window.latestDocSuggestions.map((item, idx) => `
-              <div class="source-item" role="listitem" tabindex="0" aria-label="Doc suggestion ${idx + 1}">
-                <div class="source-header">
-                  <div class="source-name">${item.heading || 'Doc Suggestion'}</div>
-                </div>
-                <div class="source-url">${item.url || ''}</div>
-                <div style="margin: 8px 0;">${item.text}</div>
-                <div class="source-actions">
-                  <button class="button small" onclick="pinSuggestion(${idx})" aria-label="Pin suggestion ${idx + 1}">Pin</button>
-                  <button class="button small" onclick="rateSuggestion(${idx}, 1)" aria-label="Thumbs up for suggestion ${idx + 1}">👍</button>
-                  <button class="button small" onclick="rateSuggestion(${idx}, -1)" aria-label="Thumbs down for suggestion ${idx + 1}">👎</button>
-                </div>
-              </div>
-            `).join('');
+            console.log('[DocPilot Sidebar UI] Rendering', window.latestDocSuggestions.length, 'suggestions');
+            console.log('[DocPilot Sidebar UI] First suggestion:', window.latestDocSuggestions[0]);
+            docSuggestions.innerHTML = window.latestDocSuggestions.map(function(item, idx) {
+              return (
+                '<div class="source-item" role="listitem" tabindex="0" aria-label="Doc suggestion ' + (idx + 1) + '">' +
+                  '<div class="source-header">' +
+                    '<div class="source-name">' + (item.heading || 'Doc Suggestion') + '</div>' +
+                  '</div>' +
+                  '<div class="source-url">' + (item.url || '') + '</div>' +
+                  '<div style="margin: 8px 0;">' + item.text + '</div>' +
+                  '<div class="source-actions">' +
+                    '<button class="button small" onclick="pinSuggestion(' + idx + ')" aria-label="Pin suggestion ' + (idx + 1) + '">Pin</button>' +
+                    '<button class="button small" onclick="rateSuggestion(' + idx + ', 1)" aria-label="Thumbs up for suggestion ' + (idx + 1) + '">👍</button>' +
+                    '<button class="button small" onclick="rateSuggestion(' + idx + ', -1)" aria-label="Thumbs down for suggestion ' + (idx + 1) + '">👎</button>' +
+                  '</div>' +
+                '</div>'
+              );
+            }).join('');
             // Keyboard navigation: focus first item on load
-            setTimeout(() => {
-              const first = docSuggestions.querySelector('.source-item');
+            setTimeout(function() {
+              var first = docSuggestions.querySelector('.source-item');
               if (first) first.focus();
             }, 0);
           } else {
-            docSuggestions.innerHTML = '<div class="empty-state">No suggestions yet. Hover over code to see relevant docs here.</div>';
+            console.log('[DocPilot Sidebar UI] No suggestions to display, showing empty state');
+            docSuggestions.innerHTML = '<div class="empty-state">No suggestions yet. Hover or select code to see relevant docs here.<br><span style="color:#888;font-size:11px;">If you just scraped docs, try reloading the window.</span></div>';
           }
         }
 
@@ -653,93 +692,54 @@ export class DocPilotSidebarProvider implements vscode.WebviewViewProvider {
           // Placeholder: send rating event to extension
         }
 
-        function toggleCustomPages() {
-            const select = document.getElementById('maxPages');
-            const customInput = document.getElementById('customPagesInput');
-            
-            if (select.value === 'custom') {
-                customInput.classList.add('visible');
-            } else {
-                customInput.classList.remove('visible');
+        document.getElementById('maxPages').addEventListener('change', function() {
+          const select = document.getElementById('maxPages');
+          const customInput = document.getElementById('customPagesInput');
+          if (select.value === 'custom') {
+            customInput.classList.add('visible');
+          } else {
+            customInput.classList.remove('visible');
+          }
+        });
+
+        document.getElementById('addSourceBtn').addEventListener('click', function() {
+          const url = document.getElementById('sourceUrl').value;
+          const name = document.getElementById('sourceName').value;
+          const maxDepth = parseInt(document.getElementById('maxDepth').value);
+          const maxPagesSelect = document.getElementById('maxPages').value;
+          let maxPages;
+          if (maxPagesSelect === 'custom') {
+            const customPages = parseInt(document.getElementById('customPages').value);
+            if (!customPages || customPages < 1 || customPages > 1000) {
+              alert('Please enter a valid page count between 1 and 1000');
+              return;
             }
-        }
-
-        function addSource() {
-            const url = document.getElementById('sourceUrl').value;
-            const name = document.getElementById('sourceName').value;
-            const maxDepth = parseInt(document.getElementById('maxDepth').value);
-            const maxPagesSelect = document.getElementById('maxPages').value;
-            
-            let maxPages;
-            if (maxPagesSelect === 'custom') {
-                const customPages = parseInt(document.getElementById('customPages').value);
-                if (!customPages || customPages < 1 || customPages > 1000) {
-                    alert('Please enter a valid page count between 1 and 1000');
-                    return;
-                }
-                maxPages = customPages;
-            } else {
-                maxPages = parseInt(maxPagesSelect);
+            maxPages = customPages;
+          } else {
+            maxPages = parseInt(maxPagesSelect);
+          }
+          if (!url) {
+            return;
+          }
+          vscode.postMessage({
+            type: 'addSource',
+            data: {
+              url,
+              name: name || undefined,
+              config: {
+                maxDepth,
+                maxPages,
+                followExternal: false
+              }
             }
-
-            if (!url) {
-                return;
-            }
-
-            vscode.postMessage({
-                type: 'addSource',
-                data: {
-                    url,
-                    name: name || undefined,
-                    config: {
-                        maxDepth,
-                        maxPages,
-                        followExternal: false
-                    }
-                }
-            });
-
-            // Clear form
-            document.getElementById('sourceUrl').value = '';
-            document.getElementById('sourceName').value = '';
-            document.getElementById('maxPages').value = '25';
-            document.getElementById('customPages').value = '';
-            document.getElementById('customPagesInput').classList.remove('visible');
-        }
-
-        function removeSource(id) {
-            vscode.postMessage({
-                type: 'removeSource',
-                data: { id }
-            });
-        }
-
-        function toggleSource(id) {
-            vscode.postMessage({
-                type: 'toggleSource',
-                data: { id }
-            });
-        }
-
-        function startScraping(id) {
-            vscode.postMessage({
-                type: 'startScraping',
-                data: { id }
-            });
-        }
-
-        function updateSettings() {
-            const isAugmentationEnabled = document.getElementById('augmentationEnabled').checked;
-            const maxContextChunks = parseInt(document.getElementById('maxContextChunks').value);
-
-            vscode.postMessage({
-                type: 'updateSettings',
-                data: {
-                    isAugmentationEnabled,
-                    maxContextChunks
-                }
-            });
-        }
+          });
+          // Clear form
+          document.getElementById('sourceUrl').value = '';
+          document.getElementById('sourceName').value = '';
+          document.getElementById('maxPages').value = '25';
+          document.getElementById('customPages').value = '';
+          document.getElementById('customPagesInput').classList.remove('visible');
+        });
     </script>
 </body>
 </html>`;

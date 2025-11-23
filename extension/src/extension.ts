@@ -18,6 +18,9 @@ let activeQueryStatus: vscode.Disposable | null = null;
 const docSuggestionCache: Map<string, any> = new Map();
 
 export function activate(context: vscode.ExtensionContext): void {
+  console.log('🚀🚀🚀 [DocPilot] Extension is ACTIVATING! 🚀🚀🚀');
+  vscode.window.showInformationMessage('DocPilot extension activated!');
+  
   // Initialize worker manager
   workerManager = new WorkerManager(context);
   context.subscriptions.push(workerManager);
@@ -40,6 +43,13 @@ export function activate(context: vscode.ExtensionContext): void {
     context
   );
   contextAugmenter.register(context);
+
+  // Helper to log to ContextAugmenter output (since outputChannel is private)
+  function logToContextAugmenter(msg: string) {
+    if (contextAugmenter && typeof (contextAugmenter as any).log === 'function') {
+      (contextAugmenter as any).log(msg);
+    }
+  }
 
   // Keep the original Copilot bridge for backward compatibility
   copilotBridge = new CopilotBridge(
@@ -89,13 +99,9 @@ export function activate(context: vscode.ExtensionContext): void {
       if (workerManager && symbol) {
         try {
           const result = await workerManager.query(contextText, undefined, 3);
-          if (contextAugmenter) {
-            contextAugmenter.outputChannel.appendLine(`[selection] found ${result.chunks.length} docs for '${symbol}'`);
-          }
+          logToContextAugmenter(`[selection] found ${result.chunks.length} docs for '${symbol}'`);
         } catch (err) {
-          if (contextAugmenter) {
-            contextAugmenter.outputChannel.appendLine(`[selection] query error: ${err}`);
-          }
+          logToContextAugmenter(`[selection] query error: ${err}`);
         }
       }
     })
@@ -104,6 +110,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.languages.registerHoverProvider({ scheme: 'file' }, {
       provideHover: async (document, position, token) => {
+        console.log('🔍🔍🔍 [DocPilot] HOVER PROVIDER TRIGGERED! 🔍🔍🔍');
         const wordRange = document.getWordRangeAtPosition(position);
         let symbol = '';
         if (wordRange) {
@@ -118,35 +125,70 @@ export function activate(context: vscode.ExtensionContext): void {
         const contextText = `${symbol}\n${contextLines.join('\n')}`.trim();
         if (workerManager && symbol) {
           try {
+            console.log('[DocPilot Hover] Starting query for:', symbol);
             // Use cache if available
             let result = docSuggestionCache.get(contextText);
             if (!result) {
               result = await workerManager.query(contextText, undefined, 3);
               docSuggestionCache.set(contextText, result);
             }
-            if (result.chunks.length > 0) {
-              // Send suggestions to sidebar
-              if (sidebarProviderInstance && sidebarProviderInstance['_view']) {
-                sidebarProviderInstance['_view'].webview.postMessage({
-                  type: 'setDocSuggestions',
-                  data: result.chunks.map(item => ({
-                    heading: item.headings && item.headings.length > 0 ? item.headings.join(' > ') : '',
-                    url: item.url,
-                    text: item.chunk.text
-                  }))
-                });
+            console.log('[DocPilot Hover] Query result:', JSON.stringify({
+              chunks: result.chunks?.length || 0,
+              totalFound: result.totalFound,
+              firstChunk: result.chunks?.[0] ? {
+                hasChunk: !!result.chunks[0].chunk,
+                hasText: !!result.chunks[0].chunk?.text,
+                textLength: result.chunks[0].chunk?.text?.length || 0,
+                hasUrl: !!result.chunks[0].url,
+                hasHeadings: !!result.chunks[0].headings
+              } : null
+            }, null, 2));
+            if (result.chunks && result.chunks.length > 0) {
+              // Send suggestions to sidebar (with error logging)
+              try {
+                const sidebarData = result.chunks.map((item: any) => ({
+                  heading: item.headings && item.headings.length > 0 ? item.headings.join(' > ') : 'Doc Suggestion',
+                  url: item.url || '',
+                  text: item.chunk?.text || ''
+                }));
+                console.log('[DocPilot Hover] Preparing sidebar message with', sidebarData.length, 'suggestions');
+                console.log('[DocPilot Hover] First suggestion:', sidebarData[0]);
+                
+                if (sidebarProviderInstance && sidebarProviderInstance['_view'] && sidebarProviderInstance['_view'].webview) {
+                  console.log('[DocPilot Hover] Posting message to sidebar webview');
+                  await sidebarProviderInstance['_view'].webview.postMessage({
+                    type: 'setDocSuggestions',
+                    data: sidebarData
+                  });
+                  console.log('[DocPilot Hover] Message posted successfully');
+                } else {
+                  console.warn('[DocPilot Hover] Sidebar webview not available:', {
+                    hasInstance: !!sidebarProviderInstance,
+                    hasView: !!sidebarProviderInstance?.['_view'],
+                    hasWebview: !!sidebarProviderInstance?.['_view']?.webview
+                  });
+                }
+              } catch (err) {
+                console.error('[DocPilot Hover] Error posting doc suggestions to sidebar:', err);
               }
-              const md = result.chunks.map((item, idx) => {
+              const md = result.chunks.map((item: any, idx: number) => {
                 let link = item.url ? `[source](${item.url})` : '';
-                let heading = item.headings && item.headings.length > 0 ? item.headings.join(' > ') : '';
-                return `**${heading}**\n${item.chunk.text}\n${link}`;
+                let heading = item.headings && item.headings.length > 0 ? item.headings.join(' > ') : 'Documentation';
+                let text = item.chunk?.text || item.text || '';
+                return `**${heading}**\n${text}\n${link}`;
               }).join('\n---\n');
-              return new vscode.Hover(new vscode.MarkdownString(md));
+              console.log('[DocPilot Hover] Created markdown hover with', result.chunks.length, 'chunks');
+              console.log('[DocPilot Hover] Markdown preview:', md.substring(0, 200));
+              // Always return a hover popup if chunks exist
+              const hover = new vscode.Hover(new vscode.MarkdownString(md));
+              console.log('[DocPilot Hover] Returning hover object');
+              return hover;
+            } else {
+              console.log('[DocPilot Hover] No chunks in result, not showing hover');
             }
           } catch (err) {
-            if (contextAugmenter) {
-              contextAugmenter.outputChannel.appendLine(`[hover] query error: ${err}`);
-            }
+            console.error('[DocPilot Hover] Query error:', err);
+            logToContextAugmenter(`[hover] query error: ${err}`);
           }
         }
         return undefined;
