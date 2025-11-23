@@ -479,8 +479,15 @@ export class DocPilotSidebarProvider implements vscode.WebviewViewProvider {
     </div>
 
     <div class="section">
-        <h3>Add Documentation Source</h3>
-        <div class="add-source-form">
+      <h3>Latest Doc Suggestions</h3>
+      <div id="docSuggestions">
+        <div class="empty-state">No suggestions yet. Hover over code to see relevant docs here.</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Add Documentation Source</h3>
+      <div class="add-source-form">
             <div class="form-group">
                 <label>URL</label>
                 <input type="url" id="sourceUrl" placeholder="https://docs.example.com" />
@@ -565,35 +572,68 @@ export class DocPilotSidebarProvider implements vscode.WebviewViewProvider {
         });
 
         function updateUI() {
-            if (!currentState) return;
+          if (!currentState) return;
 
-            // Update settings
-            document.getElementById('augmentationEnabled').checked = currentState.isAugmentationEnabled;
-            document.getElementById('maxContextChunks').value = currentState.maxContextChunks;
+          // Update settings
+          document.getElementById('augmentationEnabled').checked = currentState.isAugmentationEnabled;
+          document.getElementById('maxContextChunks').value = currentState.maxContextChunks;
 
-            // Update sources list
-            const sourcesList = document.getElementById('sourcesList');
-            if (currentState.sources.length === 0) {
-                sourcesList.innerHTML = '<div class="empty-state">No documentation sources added yet.<br>Add a source above to get started.</div>';
-            } else {
-                sourcesList.innerHTML = currentState.sources.map(source => \`
-                    <div class="source-item">
-                        <div class="source-header">
-                            <div class="source-name">\${source.name}</div>
-                            <span class="status-badge status-\${source.status}">\${source.status}</span>
-                        </div>
-                        <div class="source-url">\${source.url}</div>
-                        \${source.stats ? \`<div class="source-stats">📄 \${source.stats.pagesScraped} pages • 📦 \${source.stats.chunksCreated} chunks</div>\` : ''}
-                        <div class="source-actions">
-                            <button class="button small \${source.enabled ? 'secondary' : ''}" onclick="toggleSource('\${source.id}')">
-                                \${source.enabled ? 'Disable' : 'Enable'}
-                            </button>
-                            \${source.status !== 'scraping' ? \`<button class="button small" onclick="startScraping('\${source.id}')">Scrape</button>\` : ''}
-                            <button class="button small danger" onclick="removeSource('\${source.id}')">Remove</button>
-                        </div>
-                    </div>
-                \`).join('');
-            }
+          // Update sources list
+          const sourcesList = document.getElementById('sourcesList');
+          if (currentState.sources.length === 0) {
+            sourcesList.innerHTML = '<div class="empty-state">No documentation sources added yet.<br>Add a source above to get started.</div>';
+          } else {
+            sourcesList.innerHTML = currentState.sources.map(source => `
+              <div class="source-item">
+                <div class="source-header">
+                  <div class="source-name">${source.name}</div>
+                  <span class="status-badge status-${source.status}">${source.status}</span>
+                </div>
+                <div class="source-url">${source.url}</div>
+                ${source.stats ? `<div class="source-stats">📄 ${source.stats.pagesScraped} pages • 📦 ${source.stats.chunksCreated} chunks</div>` : ''}
+                <div class="source-actions">
+                  <button class="button small ${source.enabled ? 'secondary' : ''}" onclick="toggleSource('${source.id}')">
+                    ${source.enabled ? 'Disable' : 'Enable'}
+                  </button>
+                  ${source.status !== 'scraping' ? `<button class="button small" onclick="startScraping('${source.id}')">Scrape</button>` : ''}
+                  <button class="button small danger" onclick="removeSource('${source.id}')">Remove</button>
+                </div>
+              </div>
+            `).join('');
+          }
+
+          // Update doc suggestions (placeholder, to be wired from extension)
+          const docSuggestions = document.getElementById('docSuggestions');
+          if (window.latestDocSuggestions && window.latestDocSuggestions.length > 0) {
+            docSuggestions.innerHTML = window.latestDocSuggestions.map((item, idx) => `
+              <div class="source-item">
+                <div class="source-header">
+                  <div class="source-name">${item.heading || 'Doc Suggestion'}</div>
+                </div>
+                <div class="source-url">${item.url || ''}</div>
+                <div style="margin: 8px 0;">${item.text}</div>
+                <div class="source-actions">
+                  <button class="button small" onclick="pinSuggestion(${idx})">Pin</button>
+                  <button class="button small" onclick="rateSuggestion(${idx}, 1)">👍</button>
+                  <button class="button small" onclick="rateSuggestion(${idx}, -1)">👎</button>
+                </div>
+              </div>
+            `).join('');
+          } else {
+            docSuggestions.innerHTML = '<div class="empty-state">No suggestions yet. Hover over code to see relevant docs here.</div>';
+          }
+        }
+
+        window.latestDocSuggestions = [];
+        function setDocSuggestions(suggestions) {
+          window.latestDocSuggestions = suggestions;
+          updateUI();
+        }
+        function pinSuggestion(idx) {
+          // Placeholder: send pin event to extension
+        }
+        function rateSuggestion(idx, value) {
+          // Placeholder: send rating event to extension
         }
 
         function toggleCustomPages() {
