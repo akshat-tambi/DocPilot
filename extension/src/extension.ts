@@ -63,6 +63,23 @@ export function activate(context: vscode.ExtensionContext): void {
 
   copilotBridge.register(context);
 
+  // Listen for cursor and hover events to trigger doc suggestions
+  context.subscriptions.push(
+    vscode.window.onDidChangeTextEditorSelection(async (e) => {
+      // Placeholder: will trigger context extraction and doc suggestion
+      // Future: debounce and call context extraction/retrieval here
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.languages.registerHoverProvider({ scheme: 'file' }, {
+      provideHover: async (document, position, token) => {
+        // Placeholder: will trigger context extraction and doc suggestion
+        // Future: call context extraction/retrieval and return Hover
+        return undefined;
+      }
+    })
+  );
 
 
 
