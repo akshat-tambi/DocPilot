@@ -10,6 +10,7 @@ import { DocPilotSidebarProvider } from './sidebarProvider';
 let workerManager: WorkerManager | null = null;
 let copilotBridge: CopilotBridge | null = null;
 let contextAugmenter: ContextAugmenter | null = null;
+let sidebarProviderInstance: DocPilotSidebarProvider | null = null;
 let activeJobId: string | null = null;
 let activeQueryStatus: vscode.Disposable | null = null;
 
@@ -24,6 +25,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Register sidebar provider
   const sidebarProvider = new DocPilotSidebarProvider(context.extensionUri, workerManager, context);
+  sidebarProviderInstance = sidebarProvider;
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(DocPilotSidebarProvider.viewType, sidebarProvider)
   );
@@ -115,6 +117,17 @@ export function activate(context: vscode.ExtensionContext): void {
           try {
             const result = await workerManager.query(contextText, undefined, 3);
             if (result.chunks.length > 0) {
+              // Send suggestions to sidebar
+              if (sidebarProviderInstance && sidebarProviderInstance['_view']) {
+                sidebarProviderInstance['_view'].webview.postMessage({
+                  type: 'setDocSuggestions',
+                  data: result.chunks.map(item => ({
+                    heading: item.headings && item.headings.length > 0 ? item.headings.join(' > ') : '',
+                    url: item.url,
+                    text: item.chunk.text
+                  }))
+                });
+              }
               const md = result.chunks.map((item, idx) => {
                 let link = item.url ? `[source](${item.url})` : '';
                 let heading = item.headings && item.headings.length > 0 ? item.headings.join(' > ') : '';
