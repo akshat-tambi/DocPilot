@@ -11,7 +11,9 @@ import type {
   WorkerEventMessage,
   WorkerControlMessage,
   QueryResultPayload,
-  QueryStatusUpdatePayload
+  IntelligentQueryResultPayload,
+  QueryStatusUpdatePayload,
+  CacheStatsPayload
 } from '@docpilot/shared';
 
 export type WorkerManagerEvents = {
@@ -110,7 +112,7 @@ export class WorkerManager extends EventEmitter implements vscode.Disposable {
     this.worker.postMessage(message);
   }
 
-  public async query(query: string, jobId?: string, limit?: number): Promise<QueryResultPayload> {
+  public async query(query: string, jobId?: string, limit?: number): Promise<IntelligentQueryResultPayload> {
     await this.ensureWorker();
 
     if (!this.worker) {
@@ -123,10 +125,29 @@ export class WorkerManager extends EventEmitter implements vscode.Disposable {
       }, 30000);
 
       const handleMessage = (event: WorkerEventMessage) => {
-        if (event.type === 'query-result') {
+        if (event.type === 'intelligent-query-result') {
           clearTimeout(timeout);
           this.off('message', handleMessage);
           resolve(event.payload);
+        } else if (event.type === 'query-result') {
+          // Fallback for old-style results
+          clearTimeout(timeout);
+          this.off('message', handleMessage);
+          // Convert to intelligent format
+          const intelligentPayload: IntelligentQueryResultPayload = {
+            queryId: event.payload.queryId,
+            chunks: event.payload.chunks.map(c => ({
+              chunkId: c.chunkId,
+              url: c.url,
+              headings: c.headings,
+              text: c.text,
+              score: c.score
+            })),
+            totalFound: event.payload.totalFound,
+            queryTime: event.payload.queryTime,
+            llmProcessingTime: 0
+          };
+          resolve(intelligentPayload);
         } else if (event.type === 'worker-error') {
           clearTimeout(timeout);
           this.off('message', handleMessage);
@@ -151,6 +172,49 @@ export class WorkerManager extends EventEmitter implements vscode.Disposable {
 
     const message: WorkerControlMessage = { type: 'cancel', payload: { jobId } };
     this.worker.postMessage(message);
+  }
+
+  public async clearCache(): Promise<void> {
+    await this.ensureWorker();
+
+    if (!this.worker) {
+      throw new Error('Worker failed to start');
+    }
+
+    const message: WorkerControlMessage = {
+      type: 'clear-cache'
+    };
+    this.worker.postMessage(message);
+    this.output.appendLine('[worker] 🗑️ Cache cleared');
+  }
+
+  public async getCacheStats(): Promise<CacheStatsPayload> {
+    await this.ensureWorker();
+
+    if (!this.worker) {
+      throw new Error('Worker failed to start');
+    }
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Cache stats timeout'));
+      }, 5000);
+
+      const handleMessage = (event: WorkerEventMessage) => {
+        if (event.type === 'cache-stats') {
+          clearTimeout(timeout);
+          this.off('message', handleMessage);
+          resolve(event.payload);
+        }
+      };
+
+      this.on('message', handleMessage);
+
+      const message: WorkerControlMessage = {
+        type: 'get-cache-stats'
+      };
+      this.worker!.postMessage(message);
+    });
   }
 
   public dispose(): void {
@@ -195,6 +259,14 @@ export class WorkerManager extends EventEmitter implements vscode.Disposable {
     if (event.type === 'query-result') {
       this.output.appendLine(
         `[worker] 🔍 query ${event.payload.queryId} returned ${event.payload.chunks.length} results in ${event.payload.queryTime}ms`
+      );
+    }
+
+    if (event.type === 'intelligent-query-result') {
+      const hasAnswers = event.payload.chunks.filter(c => c.answer).length;
+      const cacheStatus = event.payload.fromCache ? ' [CACHED]' : '';
+      this.output.appendLine(
+        `[worker] 🧠 intelligent query ${event.payload.queryId} returned ${event.payload.chunks.length} results (${hasAnswers} with answers) in ${event.payload.queryTime}ms (LLM: ${event.payload.llmProcessingTime}ms)${cacheStatus}`
       );
     }
   }

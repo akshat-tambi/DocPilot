@@ -29,7 +29,18 @@
         }
       ]
     },
-    "commands": [],
+    "commands": [
+      {
+        "command": "docpilot.clearCache",
+        "title": "DocPilot: Clear LLM Cache",
+        "category": "DocPilot"
+      },
+      {
+        "command": "docpilot.showCacheStats",
+        "title": "DocPilot: Show Cache Statistics",
+        "category": "DocPilot"
+      }
+    ],
     "chatParticipants": [
       {
         "id": "docpilot.context",

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import type { IngestionJobConfig, WorkerEventMessage } from '@docpilot/shared';
+import type { IngestionJobConfig, WorkerEventMessage, IntelligentChunkResult } from '@docpilot/shared';
 
 import { WorkerManager } from './workerManager';
 import { CopilotBridge } from './copilotBridge';
@@ -15,7 +15,9 @@ let activeJobId: string | null = null;
 let activeQueryStatus: vscode.Disposable | null = null;
 
 // Simple in-memory cache for doc suggestions
-const docSuggestionCache: Map<string, any> = new Map();
+const docSuggestionCache: Map<string, IntelligentChunkResult[]> = new Map();
+let currentHoverResults: IntelligentChunkResult[] = [];
+let currentHoverIndex = 0;
 
 export function activate(context: vscode.ExtensionContext): void {
   console.log('🚀🚀🚀 [DocPilot] Extension is ACTIVATING! 🚀🚀🚀');
@@ -34,6 +36,42 @@ export function activate(context: vscode.ExtensionContext): void {
   sidebarProviderInstance = sidebarProvider;
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(DocPilotSidebarProvider.viewType, sidebarProvider)
+  );
+
+  // Register cache management commands
+  context.subscriptions.push(
+    vscode.commands.registerCommand('docpilot.clearCache', async () => {
+      try {
+        if (!workerManager) {
+          vscode.window.showWarningMessage('DocPilot: Worker not initialized');
+          return;
+        }
+        await workerManager.clearCache();
+        vscode.window.showInformationMessage('DocPilot: Cache cleared successfully');
+      } catch (error) {
+        vscode.window.showErrorMessage(`DocPilot: Failed to clear cache: ${error}`);
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('docpilot.showCacheStats', async () => {
+      try {
+        if (!workerManager) {
+          vscode.window.showWarningMessage('DocPilot: Worker not initialized');
+          return;
+        }
+        const stats = await workerManager.getCacheStats();
+        const message = `Cache Statistics:\n\nSize: ${stats.size}/${stats.maxSize} entries\n\nTop Queries:\n${
+          stats.entries.slice(0, 10).map(e => 
+            `• "${e.query}" - ${e.hits} hits, ${e.age}s ago`
+          ).join('\n') || 'No cached queries'
+        }`;
+        vscode.window.showInformationMessage(message, { modal: true });
+      } catch (error) {
+        vscode.window.showErrorMessage(`DocPilot: Failed to get cache stats: ${error}`);
+      }
+    })
   );
 
   // Initialize context augmenter (new UI-based approach)
@@ -127,32 +165,43 @@ export function activate(context: vscode.ExtensionContext): void {
           try {
             console.log('[DocPilot Hover] Starting query for:', symbol);
             // Use cache if available
-            let result = docSuggestionCache.get(contextText);
-            if (!result) {
-              result = await workerManager.query(contextText, undefined, 3);
-              docSuggestionCache.set(contextText, result);
+            let cached = docSuggestionCache.get(contextText);
+            let results: IntelligentChunkResult[];
+            
+            if (cached) {
+              results = cached;
+            } else {
+              const queryResult = await workerManager.query(contextText, undefined, 3);
+              results = queryResult.chunks;
+              docSuggestionCache.set(contextText, results);
             }
+            
             console.log('[DocPilot Hover] Query result:', JSON.stringify({
-              chunks: result.chunks?.length || 0,
-              totalFound: result.totalFound,
-              firstChunk: result.chunks?.[0] ? {
-                hasChunk: !!result.chunks[0].chunk,
-                hasText: !!result.chunks[0].chunk?.text,
-                textLength: result.chunks[0].chunk?.text?.length || 0,
-                hasUrl: !!result.chunks[0].url,
-                hasHeadings: !!result.chunks[0].headings
+              chunks: results.length,
+              firstChunk: results[0] ? {
+                hasAnswer: !!results[0].answer,
+                hasSummary: !!results[0].summary,
+                hasCodeExamples: !!results[0].codeExamples?.length
               } : null
             }, null, 2));
-            if (result.chunks && result.chunks.length > 0) {
-              // Send suggestions to sidebar (with error logging)
+            
+            if (results && results.length > 0) {
+              // Store for navigation
+              currentHoverResults = results;
+              currentHoverIndex = 0;
+              
+              // Send intelligent suggestions to sidebar
               try {
-                const sidebarData = result.chunks.map((item: any) => ({
+                const sidebarData = results.map((item: IntelligentChunkResult) => ({
                   heading: item.headings && item.headings.length > 0 ? item.headings.join(' > ') : 'Doc Suggestion',
                   url: item.url || '',
-                  text: item.chunk?.text || ''
+                  text: item.text,
+                  answer: item.answer,
+                  summary: item.summary,
+                  confidence: item.answerConfidence,
+                  codeExamples: item.codeExamples
                 }));
                 console.log('[DocPilot Hover] Preparing sidebar message with', sidebarData.length, 'suggestions');
-                console.log('[DocPilot Hover] First suggestion:', sidebarData[0]);
                 
                 if (sidebarProviderInstance && sidebarProviderInstance['_view'] && sidebarProviderInstance['_view'].webview) {
                   console.log('[DocPilot Hover] Posting message to sidebar webview');
@@ -162,29 +211,58 @@ export function activate(context: vscode.ExtensionContext): void {
                   });
                   console.log('[DocPilot Hover] Message posted successfully');
                 } else {
-                  console.warn('[DocPilot Hover] Sidebar webview not available:', {
-                    hasInstance: !!sidebarProviderInstance,
-                    hasView: !!sidebarProviderInstance?.['_view'],
-                    hasWebview: !!sidebarProviderInstance?.['_view']?.webview
-                  });
+                  console.warn('[DocPilot Hover] Sidebar webview not available');
                 }
               } catch (err) {
                 console.error('[DocPilot Hover] Error posting doc suggestions to sidebar:', err);
               }
-              const md = result.chunks.map((item: any, idx: number) => {
-                let link = item.url ? `[source](${item.url})` : '';
-                let heading = item.headings && item.headings.length > 0 ? item.headings.join(' > ') : 'Documentation';
-                let text = item.chunk?.text || item.text || '';
-                return `**${heading}**\n${text}\n${link}`;
-              }).join('\n---\n');
-              console.log('[DocPilot Hover] Created markdown hover with', result.chunks.length, 'chunks');
-              console.log('[DocPilot Hover] Markdown preview:', md.substring(0, 200));
-              // Always return a hover popup if chunks exist
+              
+              // Create intelligent hover content
+              const item = results[0]; // Show first result
+              const parts: string[] = [];
+              
+              // Add heading
+              const heading = item.headings && item.headings.length > 0 
+                ? item.headings.join(' > ') 
+                : 'Documentation';
+              parts.push(`### 📖 ${heading}\n`);
+              
+              // Add answer if available
+              if (item.answer && item.answerConfidence && item.answerConfidence > 0.3) {
+                parts.push(`**Answer:** ${item.answer}\n`);
+                parts.push(`*Confidence: ${(item.answerConfidence * 100).toFixed(0)}%*\n`);
+              }
+              
+              // Add summary if available
+              if (item.summary) {
+                parts.push(`**Summary:**\n${item.summary}\n`);
+              }
+              
+              // Add code examples if available
+              if (item.codeExamples && item.codeExamples.length > 0) {
+                parts.push(`**Example:**\n`);
+                const firstCode = item.codeExamples[0];
+                parts.push(`\`\`\`${firstCode.language}\n${firstCode.code}\n\`\`\`\n`);
+              }
+              
+              // Add source link
+              if (item.url) {
+                parts.push(`\n---\n[View Source](${item.url})`);
+              }
+              
+              // Add navigation hint if multiple results
+              if (results.length > 1) {
+                parts.push(` | *Result 1 of ${results.length}*`);
+              }
+              
+              const md = parts.join('\n');
+              console.log('[DocPilot Hover] Created intelligent hover');
+              
               const hover = new vscode.Hover(new vscode.MarkdownString(md));
               console.log('[DocPilot Hover] Returning hover object');
               return hover;
             } else {
-              console.log('[DocPilot Hover] No chunks in result, not showing hover');
+              console.log('[DocPilot Hover] No results');
             }
           } catch (err) {
             console.error('[DocPilot Hover] Query error:', err);

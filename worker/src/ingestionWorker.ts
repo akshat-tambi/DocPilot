@@ -79,7 +79,23 @@ export class IngestionWorker {
       this.cancelCurrentJob('cancelled-by-extension', message.payload.jobId);
     } else if (message.type === 'query') {
       this.handleQuery(message.payload);
+    } else if (message.type === 'clear-cache') {
+      this.handleClearCache();
+    } else if (message.type === 'get-cache-stats') {
+      this.handleGetCacheStats();
     }
+  }
+
+  private handleClearCache(): void {
+    this.retrievalEngine.clearCache();
+  }
+
+  private handleGetCacheStats(): void {
+    const stats = this.retrievalEngine.getCacheStats();
+    this.port.postMessage({
+      type: 'cache-stats',
+      payload: stats
+    });
   }
 
   private emitQueryStatus(payload: QueryStatusUpdatePayload): void {
@@ -102,9 +118,10 @@ export class IngestionWorker {
     });
 
     try {
-      const result = await this.retrievalEngine.retrieve({
+      // Use intelligent retrieval for better results
+      const result = await this.retrievalEngine.intelligentRetrieve({
         text: payload.query,
-        limit: payload.limit || 10,
+        limit: payload.limit || 5, // Fewer results with LLM since they're higher quality
         jobIds: payload.jobId ? [payload.jobId] : undefined
       });
 
@@ -124,33 +141,30 @@ export class IngestionWorker {
         timestamp: Date.now()
       });
 
-      const queryResult: QueryResultPayload = {
-        queryId,
-        chunks: result.chunks.map(item => ({
-          chunkId: item.chunk.id,
-          url: item.url,
-          headings: item.headings,
-          text: item.chunk.text,
-          score: item.score
-        })),
-        totalFound: result.totalFound,
-        queryTime: result.queryTime
-      };
-
+      // Send intelligent query result
       this.port.postMessage({
-        type: 'query-result',
-        payload: queryResult
+        type: 'intelligent-query-result',
+        payload: {
+          queryId,
+          chunks: result.chunks,
+          totalFound: result.totalFound,
+          queryTime: result.queryTime,
+          llmProcessingTime: result.llmProcessingTime,
+          fromCache: result.fromCache
+        }
       });
 
       this.emitQueryStatus({
         status: 'completed',
         queryId,
         jobId: payload.jobId,
-        totalResults: queryResult.chunks.length,
+        totalResults: result.totalFound,
         durationMs: Date.now() - startedAt,
         timestamp: Date.now()
       });
     } catch (error) {
+      console.error('[IngestionWorker] Query failed:', error);
+      
       this.emitQueryStatus({
         status: 'failed',
         queryId,
@@ -158,6 +172,7 @@ export class IngestionWorker {
         error: error instanceof Error ? error.message : String(error),
         timestamp: Date.now()
       });
+      
       this.port.postMessage({
         type: 'worker-error',
         payload: {
@@ -485,8 +500,9 @@ export class IngestionWorker {
   private parseHtml(url: string, html: string): FetchResult {
     const $ = loadHtml(html);
 
+    // Extract headings with hierarchy
     const headings: string[] = [];
-    $('h1, h2, h3')
+    $('h1, h2, h3, h4')
       .slice(0, 20)
       .each((_, element) => {
         const text = $(element).text().trim();
@@ -495,20 +511,109 @@ export class IngestionWorker {
         }
       });
 
-    let mainText = '';
-    const mainCandidates = ['main', 'article', '[role="main"]', '.content', '.markdown-body'];
+    // Find main content container
+    let mainContainer = $('main, article, [role="main"], .content, .markdown-body, .documentation').first();
+    if (mainContainer.length === 0) {
+      mainContainer = $('body');
+    }
 
-    for (const selector of mainCandidates) {
-      const candidateText = $(selector).text().trim();
-      if (candidateText.length > mainText.length) {
-        mainText = candidateText;
+    // Extract and format content with code preservation
+    const textParts: string[] = [];
+    
+    // Process each child element to preserve structure
+    mainContainer.find('*').each((_, element) => {
+      const $el = $(element);
+      const tagName = element.tagName?.toLowerCase();
+      
+      // Skip navigation, footer, sidebar elements
+      if ($el.closest('nav, footer, aside, header, .sidebar, .menu, .navigation').length > 0) {
+        return;
       }
+
+      // Handle code blocks
+      if (tagName === 'pre') {
+        const codeEl = $el.find('code').first();
+        const code = codeEl.length > 0 ? codeEl.text() : $el.text();
+        const language = codeEl.attr('class')?.match(/language-(\w+)/)?.[1] || 
+                        codeEl.attr('data-lang') || 
+                        'text';
+        
+        // Format as markdown code block
+        textParts.push(`\n\`\`\`${language}\n${code.trim()}\n\`\`\`\n`);
+        
+        // Remove to avoid duplication
+        $el.remove();
+      }
+      // Handle inline code
+      else if (tagName === 'code' && !$el.parent().is('pre')) {
+        const code = $el.text().trim();
+        if (code && code.length < 100) {
+          $el.replaceWith(` \`${code}\` `);
+        }
+      }
+      // Handle lists - preserve structure
+      else if (tagName === 'li') {
+        const text = $el.clone().children().remove().end().text().trim();
+        if (text && !$el.parent().closest('nav').length) {
+          textParts.push(`- ${text}`);
+          $el.remove();
+        }
+      }
+      // Handle paragraphs
+      else if (tagName === 'p') {
+        const text = $el.text().trim();
+        if (text) {
+          textParts.push(`${text}\n`);
+          $el.remove();
+        }
+      }
+      // Handle tables - convert to markdown-style
+      else if (tagName === 'table') {
+        const rows: string[] = [];
+        $el.find('tr').each((i, row) => {
+          const cells: string[] = [];
+          $(row).find('th, td').each((_, cell) => {
+            cells.push($(cell).text().trim());
+          });
+          if (cells.length > 0) {
+            rows.push(`| ${cells.join(' | ')} |`);
+            if (i === 0 && $(row).find('th').length > 0) {
+              // Add header separator
+              rows.push(`| ${cells.map(() => '---').join(' | ')} |`);
+            }
+          }
+        });
+        if (rows.length > 0) {
+          textParts.push('\n' + rows.join('\n') + '\n');
+        }
+        $el.remove();
+      }
+      // Handle headings - preserve hierarchy
+      else if (/^h[1-6]$/.test(tagName)) {
+        const level = parseInt(tagName.charAt(1));
+        const text = $el.text().trim();
+        if (text) {
+          textParts.push(`\n${'#'.repeat(level)} ${text}\n`);
+          $el.remove();
+        }
+      }
+    });
+
+    // Get remaining text (not already processed)
+    const remainingText = mainContainer.text().trim();
+    if (remainingText) {
+      textParts.push(remainingText);
     }
 
-    if (!mainText) {
-      mainText = $('body').text().trim();
-    }
+    // Combine all parts
+    let mainText = textParts.join('\n').trim();
+    
+    // Clean up excessive whitespace while preserving code blocks
+    mainText = mainText
+      .replace(/\n{3,}/g, '\n\n') // Max 2 consecutive newlines
+      .replace(/ {2,}/g, ' '); // Normalize spaces
 
+    // Extract links
     const links = new Set<string>();
     $('a[href]').each((_, element) => {
       const href = $(element).attr('href');
@@ -530,19 +635,41 @@ export class IngestionWorker {
   }
 
   private async parseMarkdown(content: string): Promise<FetchResult> {
+    // For markdown, we want to preserve code blocks and structure
+    // Instead of stripping everything, we'll do minimal processing
+    
     const { unified } = await import('unified');
     const remarkParse = (await import('remark-parse')).default;
-    const strip = (await import('strip-markdown')).default;
     const remarkStringify = (await import('remark-stringify')).default;
 
-    const processor = unified().use(remarkParse as any).use(strip as any).use(remarkStringify as any);
+    // Parse markdown to AST
+    const processor = unified()
+      .use(remarkParse as any)
+      .use(remarkStringify as any);
+      
     const file = await processor.process(content);
-    const text = String(file).trim();
+    let text = String(file).trim();
+
+    // Extract headings using regex
+    const headings: string[] = [];
+    const headingRegex = /^#{1,6}\s+(.+)$/gm;
+    let match;
+    while ((match = headingRegex.exec(content)) !== null) {
+      headings.push(match[1].trim());
+    }
+
+    // Preserve code blocks in markdown format
+    // Already in good format: ```language\ncode\n```
+    
+    // Clean up excessive whitespace while preserving code structure
+    text = text
+      .replace(/\n{4,}/g, '\n\n\n') // Max 3 newlines (preserve code block spacing)
+      .trim();
 
     return {
       text,
-      headings: [],
-      links: []
+      headings,
+      links: [] // We don't extract links from markdown for now
     };
   }
 

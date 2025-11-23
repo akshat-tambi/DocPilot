@@ -113,6 +113,26 @@ export type QueryStatusUpdatePayload =
       error: string;
     });
 
+export interface CodeBlock {
+  language: string;
+  code: string;
+  context: string; // Surrounding explanation text
+}
+
+export interface IntelligentChunkResult {
+  chunkId: string;
+  url: string;
+  headings: string[];
+  text: string;
+  score: number;
+  // LLM-enhanced fields
+  answer?: string; // Extracted precise answer
+  answerConfidence?: number; // Confidence score for the answer
+  summary?: string; // 2-3 sentence summary
+  codeExamples?: CodeBlock[]; // Extracted code blocks
+  rerankScore?: number; // Cross-encoder reranking score
+}
+
 export interface QueryResultPayload {
   queryId: string;
   chunks: Array<{
@@ -126,10 +146,31 @@ export interface QueryResultPayload {
   queryTime: number;
 }
 
+export interface IntelligentQueryResultPayload {
+  queryId: string;
+  chunks: IntelligentChunkResult[];
+  totalFound: number;
+  queryTime: number;
+  llmProcessingTime?: number; // Time spent on LLM operations
+  fromCache?: boolean; // Indicates if result was served from cache
+}
+
+export interface CacheStatsPayload {
+  size: number;
+  maxSize: number;
+  entries: Array<{
+    query: string;
+    hits: number;
+    age: number;
+  }>;
+}
+
 export type WorkerControlMessage =
   | { type: 'start'; payload: IngestionJobConfig }
   | { type: 'cancel'; payload: CancelJobPayload }
-  | { type: 'query'; payload: QueryPayload };
+  | { type: 'query'; payload: QueryPayload }
+  | { type: 'clear-cache' }
+  | { type: 'get-cache-stats' };
 
 export type WorkerEventMessage =
   | { type: 'page-progress'; payload: PageProgressPayload }
@@ -137,6 +178,8 @@ export type WorkerEventMessage =
   | { type: 'job-status'; payload: JobStatusPayload }
   | { type: 'query-status'; payload: QueryStatusUpdatePayload }
   | { type: 'query-result'; payload: QueryResultPayload }
+  | { type: 'intelligent-query-result'; payload: IntelligentQueryResultPayload }
+  | { type: 'cache-stats'; payload: CacheStatsPayload }
   | { type: 'worker-error'; payload: WorkerErrorPayload };
 
 export function isWorkerControlMessage(message: unknown): message is WorkerControlMessage {
