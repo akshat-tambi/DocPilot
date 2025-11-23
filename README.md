@@ -35,6 +35,22 @@ AI-powered VS Code extension that ingests documentation and enhances GitHub Copi
 - Relevant context is injected to provide more accurate, documentation-specific responses
 - Configure the number of context chunks and enable/disable the feature globally
 
+## New Features (2025 Update)
+
+- **Inline Documentation Suggestions**: See relevant documentation snippets directly in VS Code hovers as you move your cursor or hover over code.
+- **Sidebar Doc Suggestions**: The sidebar now shows the latest relevant documentation for your current code context, with quick actions.
+- **User Actions**: Pin, bookmark, or rate documentation suggestions from the sidebar for future reference and feedback.
+- **Performance**: Fast, cached lookups for repeated queries and efficient sidebar updates.
+- **Accessibility**: Sidebar doc suggestions are accessible with ARIA roles and keyboard navigation.
+
+### How to Use the New Features
+
+- **Hover or move your cursor** over code to see relevant documentation in a popup and in the sidebar.
+- **Sidebar Actions**: Use the pin and rate buttons to mark useful suggestions or provide feedback.
+- **Settings**: Adjust the number of context chunks and enable/disable features from the sidebar settings panel.
+
+---
+
 ## Architecture
 
 - `extension/` - VS Code extension implementation with sidebar interface and chat participant
