@@ -74,6 +74,18 @@ export class DocPilotSidebarProvider implements vscode.WebviewViewProvider {
     // Handle messages from the webview
     webviewView.webview.onDidReceiveMessage(
       async (message) => {
+        if (message.type === 'pinSuggestion') {
+          // For now, just log the pin action
+          console.log('Pin suggestion', message.data);
+          vscode.window.showInformationMessage('Pinned doc suggestion');
+          return;
+        }
+        if (message.type === 'rateSuggestion') {
+          // For now, just log the rating action
+          console.log('Rate suggestion', message.data);
+          vscode.window.showInformationMessage(`Rated doc suggestion: ${message.data.value > 0 ? '👍' : '👎'}`);
+          return;
+        }
         await this.handleMessage(message);
       },
       undefined,
