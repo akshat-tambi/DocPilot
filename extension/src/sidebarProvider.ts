@@ -492,7 +492,7 @@ export class DocPilotSidebarProvider implements vscode.WebviewViewProvider {
 
     <div class="section">
       <h3>Latest Doc Suggestions</h3>
-      <div id="docSuggestions">
+      <div id="docSuggestions" role="list" tabindex="0" aria-label="Latest documentation suggestions">
         <div class="empty-state">No suggestions yet. Hover over code to see relevant docs here.</div>
       </div>
     </div>
@@ -618,19 +618,24 @@ export class DocPilotSidebarProvider implements vscode.WebviewViewProvider {
           const docSuggestions = document.getElementById('docSuggestions');
           if (window.latestDocSuggestions && window.latestDocSuggestions.length > 0) {
             docSuggestions.innerHTML = window.latestDocSuggestions.map((item, idx) => `
-              <div class="source-item">
+              <div class="source-item" role="listitem" tabindex="0" aria-label="Doc suggestion ${idx + 1}">
                 <div class="source-header">
                   <div class="source-name">${item.heading || 'Doc Suggestion'}</div>
                 </div>
                 <div class="source-url">${item.url || ''}</div>
                 <div style="margin: 8px 0;">${item.text}</div>
                 <div class="source-actions">
-                  <button class="button small" onclick="pinSuggestion(${idx})">Pin</button>
-                  <button class="button small" onclick="rateSuggestion(${idx}, 1)">👍</button>
-                  <button class="button small" onclick="rateSuggestion(${idx}, -1)">👎</button>
+                  <button class="button small" onclick="pinSuggestion(${idx})" aria-label="Pin suggestion ${idx + 1}">Pin</button>
+                  <button class="button small" onclick="rateSuggestion(${idx}, 1)" aria-label="Thumbs up for suggestion ${idx + 1}">👍</button>
+                  <button class="button small" onclick="rateSuggestion(${idx}, -1)" aria-label="Thumbs down for suggestion ${idx + 1}">👎</button>
                 </div>
               </div>
             `).join('');
+            // Keyboard navigation: focus first item on load
+            setTimeout(() => {
+              const first = docSuggestions.querySelector('.source-item');
+              if (first) first.focus();
+            }, 0);
           } else {
             docSuggestions.innerHTML = '<div class="empty-state">No suggestions yet. Hover over code to see relevant docs here.</div>';
           }
